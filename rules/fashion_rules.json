@@ -1,0 +1,19 @@
+{
+    "color_combinations": {
+        "black": ["white", "grey", "red", "blue"],
+        "navy": ["white", "grey", "beige"],
+        "brown": ["beige", "white", "green"]
+    },
+    "category_rules": {
+        "formal": {
+            "allowed_tops": ["shirt", "blazer"],
+            "allowed_bottoms": ["trousers"],
+            "allowed_shoes": ["dress_shoes"]
+        },
+        "casual": {
+            "allowed_tops": ["t-shirt", "sweater"],
+            "allowed_bottoms": ["jeans", "shorts"],
+            "allowed_shoes": ["sneakers"]
+        }
+    }
+}

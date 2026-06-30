@@ -1,0 +1,9 @@
+weights/
+datasets/
+__pycache__/
+*.pyc
+.env
+*.pt
+*.h5
+.pytest_cache/
+.DS_Store

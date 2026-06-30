@@ -1,0 +1,9 @@
+FastAPI
+uvicorn
+torch
+torchvision
+ultralytics
+opencv-python
+scikit-learn
+Pillow
+sqlalchemy
