@@ -1,20 +1,52 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Optional
 
-class UploadItemResponse(BaseModel):
-    item_id: str
-    category: str
-    color: str
+
+#  Phase 2: Wardrobe Upload 
+
+class WardrobeItemBasic(BaseModel):
+    """Returned by /wardrobe/upload in Phase 2 (no DB, no embeddings yet)."""
+    type:       str
+    confidence: float
+    color:      str
+    hex:        str
+
+
+class UploadResponse(BaseModel):
+    items: List[WardrobeItemBasic]
+
+
+# Phase 4+: Full Wardrobe Item (with DB + embeddings)
+
+class WardrobeItemFull(BaseModel):
+    id:          Optional[int] = None
+    type:        str
+    confidence:  float
+    color:       str
+    hex:         str
+    pattern:     Optional[str] = None
+    style:       Optional[str] = None
+    season:      Optional[str] = None
+    embedding:   Optional[List[float]] = None
+    image_path:  Optional[str] = None
+
+
+#  Phase 5: Recommend 
 
 class RecommendRequest(BaseModel):
-    occasion: Optional[str] = None
-    weather: Optional[str] = None
+    wardrobe:  List[WardrobeItemFull]
+    occasion:  str
+    weather:   Optional[str] = None
+    season:    Optional[str] = None
 
-class OutfitRecommendation(BaseModel):
-    top_id: str
-    bottom_id: str
-    shoes_id: Optional[str] = None
-    score: float
+
+class OutfitItem(BaseModel):
+    id:    Optional[int]
+    type:  str
+    color: str
+
 
 class RecommendResponse(BaseModel):
-    recommendations: List[OutfitRecommendation]
+    outfit:  List[OutfitItem]
+    score:   float
+    occasion: str
