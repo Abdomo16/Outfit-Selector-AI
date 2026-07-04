@@ -7,3 +7,5 @@ opencv-python
 scikit-learn
 Pillow
 sqlalchemy
+python-multipart
+tensorflow
