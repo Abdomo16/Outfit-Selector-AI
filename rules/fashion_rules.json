@@ -1,19 +1,163 @@
 {
-    "color_combinations": {
-        "black": ["white", "grey", "red", "blue"],
-        "navy": ["white", "grey", "beige"],
-        "brown": ["beige", "white", "green"]
-    },
-    "category_rules": {
+    "occasion_rules": {
         "formal": {
-            "allowed_tops": ["shirt", "blazer"],
-            "allowed_bottoms": ["trousers"],
-            "allowed_shoes": ["dress_shoes"]
+            "allowed_types": [
+                "suit",
+                "blazer",
+                "dress_shirt",
+                "trousers",
+                "oxford_shoes",
+                "dress"
+            ],
+            "forbidden_types": [
+                "hoodie",
+                "sneakers",
+                "flip_flops",
+                "jeans",
+                "t-shirt",
+                "shorts"
+            ]
         },
         "casual": {
-            "allowed_tops": ["t-shirt", "sweater"],
-            "allowed_bottoms": ["jeans", "shorts"],
-            "allowed_shoes": ["sneakers"]
+            "allowed_types": [
+                "jeans",
+                "t-shirt",
+                "hoodie",
+                "sneakers",
+                "chinos",
+                "shorts",
+                "blouse",
+                "skirt"
+            ],
+            "forbidden_types": [
+                "suit",
+                "tuxedo"
+            ]
+        },
+        "business": {
+            "allowed_types": [
+                "blazer",
+                "dress_shirt",
+                "chinos",
+                "trousers",
+                "loafers",
+                "oxford_shoes",
+                "blouse"
+            ],
+            "forbidden_types": [
+                "hoodie",
+                "flip_flops",
+                "shorts",
+                "sneakers"
+            ]
+        },
+        "sport": {
+            "allowed_types": [
+                "tracksuit",
+                "shorts",
+                "shoes",
+                "jersey",
+                "leggings",
+                "polo"
+            ],
+            "forbidden_types": [
+                "suit",
+                "dress",
+                "oxford_shoes",
+                "blazer"
+            ]
+        },
+        "party": {
+            "allowed_types": [
+                "dress",
+                "blazer",
+                "jeans",
+                "heels",
+                "boots",
+                "sneakers",
+                "blouse",
+                "skirt"
+            ],
+            "forbidden_types": [
+                "tracksuit",
+                "shoes",
+                "pyjama"
+            ]
+        }
+    },
+    "color_rules": {
+        "white": [
+            "matches_all"
+        ],
+        "black": [
+            "matches_all"
+        ],
+        "navy": [
+            "beige",
+            "white",
+            "grey",
+            "brown"
+        ],
+        "brown": [
+            "navy",
+            "beige",
+            "grey",
+            "olive"
+        ],
+        "grey": [
+            "white",
+            "black",
+            "navy",
+            "burgundy"
+        ],
+        "beige": [
+            "navy",
+            "brown",
+            "white",
+            "olive"
+        ],
+        "olive": [
+            "beige",
+            "brown",
+            "khaki",
+            "white"
+        ],
+        "burgundy": [
+            "grey",
+            "navy",
+            "cream",
+            "white"
+        ]
+    },
+    "season_rules": {
+        "winter": {
+            "forbidden_types": [
+                "sandals",
+                "flip_flops",
+                "shorts",
+                "tank_top"
+            ]
+        },
+        "summer": {
+            "forbidden_types": [
+                "heavy_coat",
+                "wool_sweater",
+                "thick_boots",
+                "outwear"
+            ]
+        },
+        "spring": {
+            "forbidden_types": [
+                "heavy_coat",
+                "thick_boots"
+            ]
+        },
+        "autumn": {
+            "forbidden_types": [
+                "flip_flops",
+                "shorts",
+                "tank_top"
+            ]
         }
     }
 }
