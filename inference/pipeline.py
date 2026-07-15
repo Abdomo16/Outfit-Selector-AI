@@ -25,7 +25,7 @@ class InferencePipeline:
             "hex":        color_res["hex"],
             "pattern":    attr_res["pattern"],
             "style":      attr_res["style"],
-            "season":     attr_res["season"]
+            "occasion":   attr_res["occasion"]
         }
 
     def process_upload(self, image: Image.Image) -> dict:
