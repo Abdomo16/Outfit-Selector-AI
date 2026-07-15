@@ -24,6 +24,10 @@ class AttributeExtractor:
         self.patterns = ["Plain", "Striped", "Floral", "Plaid"]
         self.pattern_prompts = [f"a photo of {p.lower()} patterned clothing" for p in self.patterns]
 
+        # 4. Seasons / Weather (Summer, Winter, etc.)
+        self.seasons = ["Summer", "Winter", "Spring", "Autumn"]
+        self.season_prompts = [f"a photo of clothing suited for {s.lower()} weather" for s in self.seasons]
+
     def _get_best_match(self, image: Image.Image, choices: list, prompts: list) -> str:
         # Pass the image and text prompts to the model
         inputs = self.processor(text=prompts, images=image, return_tensors="pt", padding=True).to(self.device)
@@ -45,9 +49,11 @@ class AttributeExtractor:
         style = self._get_best_match(img, self.styles, self.style_prompts)
         occasion = self._get_best_match(img, self.occasions, self.occasion_prompts)
         pattern = self._get_best_match(img, self.patterns, self.pattern_prompts)
+        season = self._get_best_match(img, self.seasons, self.season_prompts)
         
         return {
             "pattern": pattern,
             "style": style,
-            "occasion": occasion
+            "occasion": occasion,
+            "season": season
         }
