@@ -1,5 +1,43 @@
 {
     "occasion_rules": {
+        "gym": {
+            "forbidden_types": [
+                "suit",
+                "dress",
+                "oxford_shoes",
+                "blazer",
+                "jeans",
+                "chinos",
+                "trousers",
+                "dress_shirt",
+                "wool_sweater"
+            ]
+        },
+        "university": {
+            "forbidden_types": [
+                "suit",
+                "tuxedo",
+                "oxford_shoes"
+            ]
+        },
+        "work": {
+            "forbidden_types": [
+                "hoodie",
+                "flip_flops",
+                "shorts",
+                "sneakers",
+                "tracksuit"
+            ]
+        },
+        "date_night": {
+            "forbidden_types": [
+                "tracksuit",
+                "pyjama",
+                "shorts",
+                "flip_flops",
+                "hoodie"
+            ]
+        },
         "formal": {
             "allowed_types": [
                 "suit",
