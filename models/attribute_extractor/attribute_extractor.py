@@ -28,6 +28,17 @@ class AttributeExtractor:
         self.seasons = ["Summer", "Winter", "Spring", "Autumn"]
         self.season_prompts = [f"a photo of clothing suited for {s.lower()} weather" for s in self.seasons]
 
+        # 5. Pants Types
+        self.pants_types = ["jeans", "trousers", "chinos", "tracksuit", "leggings", "shorts"]
+        self.pants_prompts = [
+            "a photo of denim jeans",
+            "a photo of formal trousers pants",
+            "a photo of casual chinos pants",
+            "a photo of a sports tracksuit bottoms sweatpants",
+            "a photo of tight athletic leggings",
+            "a photo of shorts"
+        ]
+
     def _get_best_match(self, image: Image.Image, choices: list, prompts: list) -> str:
         # Pass the image and text prompts to the model
         inputs = self.processor(text=prompts, images=image, return_tensors="pt", padding=True).to(self.device)
@@ -57,3 +68,10 @@ class AttributeExtractor:
             "occasion": occasion,
             "season": season
         }
+
+    def get_pants_type(self, image: Image.Image) -> str:
+        """
+        Refines a generic 'trousers' or 'jeans' type down to exactly what it is.
+        """
+        img = image.convert("RGB")
+        return self._get_best_match(img, self.pants_types, self.pants_prompts)
