@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api.routes import wardrobe, recommend
+from api.routes import wardrobe, recommend, visualization
 from inference.pipeline import InferencePipeline
 from contextlib import asynccontextmanager
 
@@ -13,6 +13,7 @@ app = FastAPI(title="Outfit Selector AI", lifespan=lifespan)
 
 app.include_router(wardrobe.router, prefix="/wardrobe", tags=["wardrobe"])
 app.include_router(recommend.router, prefix="/recommend", tags=["recommend"])
+app.include_router(visualization.router, prefix="/visualize", tags=["virtual try-on"])
 
 @app.get("/health")
 def health_check():
