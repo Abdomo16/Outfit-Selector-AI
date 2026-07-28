@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 
 
 #  Phase 2: Wardrobe Upload 
@@ -41,9 +41,14 @@ class RecommendRequest(BaseModel):
 
 
 class OutfitItem(BaseModel):
-    id:    Optional[int]
-    type:  str
-    color: str
+    id:         Union[int, str, None] = None
+    category:   str
+    color:      str
+    confidence: Optional[float] = None
+    style:      Optional[str] = None
+    pattern:    Optional[str] = None
+    season:     Optional[str] = None
+    imageUrl:   Optional[str] = None
 
 
 class RecommendResponse(BaseModel):
