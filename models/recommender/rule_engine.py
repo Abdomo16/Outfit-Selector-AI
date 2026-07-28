@@ -11,8 +11,10 @@ class RuleEngine:
         item_types = [item.type.lower() for item in items]
         
         # 1. Occasion Check
-        if occasion and occasion in self.rules.get("occasion_rules", {}):
-            occ_rule = self.rules["occasion_rules"][occasion]
+        if occasion:
+            occasion_key = occasion.lower().strip().replace(" ", "_")
+            if occasion_key in self.rules.get("occasion_rules", {}):
+                occ_rule = self.rules["occasion_rules"][occasion_key]
             forbidden = occ_rule.get("forbidden_types", [])
             for t in item_types:
                 if t in forbidden:
