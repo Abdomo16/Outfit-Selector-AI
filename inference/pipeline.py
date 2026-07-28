@@ -18,8 +18,13 @@ class InferencePipeline:
         class_res = self.classifier.predict(image)
         color_res = self.color_detector.predict(image)
         attr_res = self.attribute_extractor.predict(image)
+        
+        item_type = class_res["type"]
+        if item_type in ["trousers", "jeans", "shorts"]:
+            item_type = self.attribute_extractor.get_pants_type(image)
+
         return {
-            "type":       class_res["type"],
+            "type":       item_type,
             "confidence": class_res["confidence"],
             "color":      color_res["color"],
             "hex":        color_res["hex"],

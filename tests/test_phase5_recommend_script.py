@@ -33,7 +33,7 @@ def run_tests():
     outfit, score = recommender.recommend(wardrobe, occasion="casual")
     assert len(outfit) > 0
     for item in outfit:
-        assert item.type != "suit"
+        assert item.category != "suit"
     print("Recommender OK")
 
     print("\nTesting API Endpoint...")

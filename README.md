@@ -21,17 +21,47 @@ Outfit Selector AI is an intelligent wardrobe management and outfit recommendati
 - /tests: Dedicated unit tests and scripts for pipeline integration and logic validation.
 - /weights: Dedicated storage for machine learning artifacts and parameter files necessary for inference.
 
-## Quick Start Guide
+## Setup Guide
 
-1. Navigate to the project root directory and install all required dependencies:
+### Local Development
+1. Clone the repository and navigate to the project directory.
+2. Install all required dependencies:
+   ```bash
    pip install -r requirements.txt
-
-2. Ensure all corresponding model weights are correctly placed inside the /weights directory for inference resolution.
-
-3. Start the application backend locally:
+   ```
+3. Copy the `.env.example` file to `.env` and fill in your configurations.
+4. Ensure all corresponding model weights are correctly placed inside the `weights/` directory (`yolov8m-seg.pt`, etc.).
+5. Start the application backend locally:
+   ```bash
    uvicorn api.main:app --reload
+   ```
 
-The server will be available by default at http://127.0.0.1:8000. You can investigate the API routing structure and invoke the endpoints directly from the interactive docs available at http://127.0.0.1:8000/docs.
+### Docker Deployment (Production)
+Build and run the production-ready Docker container:
+```bash
+docker build -t outfit-selector .
+docker run -p 8000:8000 --env-file .env outfit-selector
+```
+
+The server will be available at `http://127.0.0.1:8000`.
+
+## API Documentation
+
+- `POST /wardrobe/upload`: Accepts an image upload. Returns a JSON schema of all segmented items identified in the image, computing their category, color, attributes, and 512-dimensional embeddings.
+- `POST /recommend`: Accepts a collection of wardrobe items and constraints (occasion/season). Applies fashion rules and similarity scoring to output the best outfit combination.
+
+Full interactive documentation is available dynamically at `http://127.0.0.1:8000/docs`.
+
+## Datasets & Training
+
+### Dataset Requirements
+- **Segmentation**: We use the Roboflow DeepFashion2 dataset for YOLOv8 instance segmentation. Ensure the data is properly formatted for YOLOv8.
+- **Classification**: Uses standard labeled clothing datasets categorized by `type` and hierarchical attributes.
+
+### Training the Models
+Training notebooks and utilities are located in `notebook_training/`.
+1. Run the YOLOv8 training sequence to output `.pt` files.
+2. Export the final weights configuration as `best.pt` and move them to the `weights/` directory prior to deployment.
 
 ## Testing
 

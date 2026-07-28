@@ -40,7 +40,7 @@ def test_recommender():
     outfit, score = recommender.recommend(wardrobe, occasion="casual")
     assert len(outfit) > 0
     for item in outfit:
-        assert item.type != "suit"
+        assert item.category != "suit"
 
 def test_recommend_endpoint():
     payload = {
