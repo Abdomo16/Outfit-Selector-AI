@@ -16,7 +16,7 @@ class UploadResponse(BaseModel):
     items: List[WardrobeItemBasic]
 
 
-# Phase 4+: Full Wardrobe Item (with DB + embeddings)
+# Phase 4+: Full Wardrobe Item 
 
 class WardrobeItemFull(BaseModel):
     id:          Optional[int] = None
@@ -26,6 +26,7 @@ class WardrobeItemFull(BaseModel):
     hex:         str
     pattern:     Optional[str] = None
     style:       Optional[str] = None
+    occasion:    Optional[str] = None   # CLIP-predicted item occasion, e.g. "Gym", "Work"
     season:      Optional[str] = None
     embedding:   Optional[List[float]] = None
     image_path:  Optional[str] = None
