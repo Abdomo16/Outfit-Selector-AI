@@ -13,7 +13,7 @@ class AttributeExtractor:
         print(f"[AttributeExtractor] CLIP loaded successfully onto {self.device}!")
         
         # 1. Styles exactly matching Flutter App
-        self.styles = ["Streetwear", "Elegant", "Minimal", "Vintage"]
+        self.styles = ["Streetwear", "Elegant", "Minimal", "Vintage", "Sport"]
         self.style_prompts = [f"a photo of {s.lower()} fashion clothing" for s in self.styles]
         
         # 2. Occasions exactly matching Flutter App
