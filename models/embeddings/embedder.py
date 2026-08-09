@@ -9,7 +9,7 @@ class Embedder:
         """
         Takes an image and returns a dummy 512-dim embedding vector.
         """
-        # Return a normalized random 512-dim numpy array
+        #  normalized random 512-dim numpy array
         vec = np.random.randn(512)
         vec = vec / np.linalg.norm(vec)
         return vec.tolist()
