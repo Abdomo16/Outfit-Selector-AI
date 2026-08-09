@@ -80,8 +80,10 @@ class Recommender:
     def recommend(self, wardrobe: List[WardrobeItemFull], occasion: str = None, season: str = None) -> Tuple[List[OutfitItem], float]:
         candidates = self._generate_candidates(wardrobe)
         
-        best_outfit = []
-        best_score = -1.0
+        # Shuffle first so equal-scored candidates aren't always in the same order
+        random.shuffle(candidates)
+
+        scored: List[Tuple[float, List[WardrobeItemFull]]] = []
 
         for candidate in candidates:
             # 1. Filter by rules
@@ -90,19 +92,18 @@ class Recommender:
 
             # 2. Score outfit
             score = self._score_outfit(candidate)
-            
-            # Add small random noise to prevent deterministic ties and allow slight variations
-            score += random.uniform(0.0, 0.05)
+            scored.append((score, candidate))
 
-            # 3. Prefer this candidate if:
-            #    (a) it scores higher, OR
-            #    (b) same score but has more items (completeness tie-break)
-            if score > best_score or (
-                score == best_score and len(candidate) > len(best_outfit)
-            ):
-                best_score = score
-                best_outfit = candidate
-                
+        if not scored:
+            return [], 0.0
+
+        # Sort descending by score
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Pick randomly from top-5 to give variety on "Regenerate"
+        top_n = scored[:5]
+        best_score, best_outfit = random.choice(top_n)
+
         outfit_items = [
             OutfitItem(
                 id=item.id,
