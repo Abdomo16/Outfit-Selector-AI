@@ -11,6 +11,10 @@
                 "trousers",
                 "dress_shirt",
                 "wool_sweater"
+            ],
+            "forbidden_styles": [
+                "elegant",
+                "vintage"
             ]
         },
         "university": {
@@ -18,6 +22,12 @@
                 "suit",
                 "tuxedo",
                 "oxford_shoes"
+            ],
+            "forbidden_styles": [
+                "sport"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
             ]
         },
         "work": {
@@ -27,6 +37,13 @@
                 "shorts",
                 "sneakers",
                 "tracksuit"
+            ],
+            "forbidden_styles": [
+                "sport",
+                "streetwear"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
             ]
         },
         "date_night": {
@@ -36,6 +53,12 @@
                 "shorts",
                 "flip_flops",
                 "hoodie"
+            ],
+            "forbidden_styles": [
+                "sport"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
             ]
         },
         "formal": {
@@ -54,6 +77,13 @@
                 "jeans",
                 "t-shirt",
                 "shorts"
+            ],
+            "forbidden_styles": [
+                "sport",
+                "streetwear"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
             ]
         },
         "casual": {
@@ -70,6 +100,9 @@
             "forbidden_types": [
                 "suit",
                 "tuxedo"
+            ],
+            "forbidden_styles": [
+                "elegant"
             ]
         },
         "business": {
@@ -87,6 +120,10 @@
                 "flip_flops",
                 "shorts",
                 "sneakers"
+            ],
+            "forbidden_styles": [
+                "sport",
+                "streetwear"
             ]
         },
         "sport": {
@@ -102,7 +139,14 @@
                 "suit",
                 "dress",
                 "oxford_shoes",
-                "blazer"
+                "blazer",
+                "jeans",
+                "chinos",
+                "trousers"
+            ],
+            "forbidden_styles": [
+                "elegant",
+                "vintage"
             ]
         },
         "party": {
@@ -120,6 +164,12 @@
                 "tracksuit",
                 "shoes",
                 "pyjama"
+            ],
+            "forbidden_styles": [
+                "sport"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
             ]
         }
     },
