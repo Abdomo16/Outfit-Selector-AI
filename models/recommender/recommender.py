@@ -1,20 +1,46 @@
 from typing import List, Tuple
 from api.schemas import WardrobeItemFull, OutfitItem
-from models.recommender.rule_engine import RuleEngine
+from models.recommender.rule_engine import RuleEngine, normalise_type, normalise_label, is_sport_item
 from models.recommender.similarity import cosine_similarity
 import random
 
 class Recommender:
     def __init__(self, rule_engine: RuleEngine = None):
         self.rule_engine = rule_engine or RuleEngine()
+        self._last_outfit_ids = None
+
+    @staticmethod
+    def _outfit_signature(outfit: List[WardrobeItemFull]) -> frozenset:
+        return frozenset(item.id for item in outfit if item.id is not None)
+
+    def _pick_outfit(self, top_candidates: List[Tuple[float, List[WardrobeItemFull]]]):
+        """
+        Fix: Resolves the issue where regenerating recommends the exact same item.
+        Pick a top candidate, preferring one that differs from the last pick
+        so 'Regenerate' actually shows something new when alternatives exist.
+        """
+        if len(top_candidates) <= 1:
+            return top_candidates[0]
+
+        distinct = [
+            s for s in top_candidates
+            if self._outfit_signature(s[1]) != self._last_outfit_ids
+        ]
+        if not distinct:
+            distinct = top_candidates
+
+        chosen = random.choice(distinct)
+        self._last_outfit_ids = self._outfit_signature(chosen[1])
+        return chosen
 
     def _generate_candidates(self, wardrobe: List[WardrobeItemFull]) -> List[List[WardrobeItemFull]]:
-        # A simple wardrobe grammar
-        tops = [i for i in wardrobe if i.type.lower() in ["t-shirt", "hoodie", "dress_shirt", "blouse", "wool_sweater", "polo", "tank_top", "tshirts", "tshirt", "shirt", "top", "sweater"]]
-        bottoms = [i for i in wardrobe if i.type.lower() in ["jeans", "trousers", "chinos", "shorts", "skirt", "leggings", "pant", "pants", "joggers", "jean", "trouser"]]
-        shoes = [i for i in wardrobe if i.type.lower() in ["sneakers", "oxford_shoes", "flip_flops", "loafers", "shoes", "heels", "boots", "sandals", "shoe", "boot", "sneaker", "sandal"]]
-        outerwear = [i for i in wardrobe if i.type.lower() in ["blazer", "suit", "heavy_coat", "outwear", "jacket", "coat"]]
-        one_piece = [i for i in wardrobe if i.type.lower() in ["dress", "tracksuit", "tuxedo", "pyjama"]]
+        # A simple wardrobe grammar.  Always compare canonical classifier labels;
+        # the uploaded type is retained in the response for the client.
+        tops = [i for i in wardrobe if normalise_type(i.type) in {"t_shirt", "hoodie", "dress_shirt", "blouse", "wool_sweater", "polo", "tank_top", "shirt", "top", "sweater", "jersey"}]
+        bottoms = [i for i in wardrobe if normalise_type(i.type) in {"jeans", "trousers", "chinos", "shorts", "skirt", "leggings", "joggers"}]
+        shoes = [i for i in wardrobe if normalise_type(i.type) in {"sneakers", "oxford_shoes", "flip_flops", "loafers", "shoes", "heels", "boots", "sandals", "shoe", "boot", "sneaker", "sandal", "flats"}]
+        outerwear = [i for i in wardrobe if normalise_type(i.type) in {"blazer", "suit", "heavy_coat", "outerwear", "outwear", "jacket", "coat"}]
+        one_piece = [i for i in wardrobe if normalise_type(i.type) in {"dress", "tracksuit", "tuxedo", "pyjama", "kurta"}]
         
         candidates = []
         
@@ -93,6 +119,19 @@ class Recommender:
             # 2. Score outfit
             score = self._score_outfit(candidate)
             scored.append((score, candidate))
+            
+        # Fallback: if no candidates passed rules, try ignoring the occasion constraint
+        if not scored and occasion:
+            for candidate in candidates:
+                # Gym/sport wear must stay gym-only even on the relaxed fallback
+                # path, otherwise an empty result quietly leaks sporty items.
+                if normalise_label(occasion) != "gym" and any(is_sport_item(item) for item in candidate):
+                    continue
+                if not self.rule_engine.validate_outfit(candidate, occasion=None, season=season):
+                    continue
+                score = self._score_outfit(candidate)
+                # Penalise fallback candidates so they don't seem as good as proper ones
+                scored.append((score - 0.2, candidate))
 
         if not scored:
             return [], 0.0
@@ -100,9 +139,17 @@ class Recommender:
         # Sort descending by score
         scored.sort(key=lambda x: x[0], reverse=True)
 
-        # Pick randomly from top-5 to give variety on "Regenerate"
-        top_n = scored[:5]
-        best_score, best_outfit = random.choice(top_n)
+        # Prefer complete outfits: only consider multi-item candidates if any exist,
+        # otherwise single items (e.g. a dress) are the only option.
+        multi = [s for s in scored if len(s[1]) > 1]
+        pool = multi if multi else scored
+
+        # Select randomly from top candidates to increase variety on Regenerate
+        best_overall_score = pool[0][0]
+        # Include any candidate that scores within 0.1 of the top score
+        top_candidates = [s for s in pool if s[0] >= best_overall_score - 0.1]
+
+        best_score, best_outfit = self._pick_outfit(top_candidates)
 
         outfit_items = [
             OutfitItem(
