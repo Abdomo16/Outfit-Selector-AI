@@ -26,6 +26,18 @@ def test_rule_engine():
     # Winter season rejects flip_flops
     assert engine.validate_outfit([item_winter], season="winter") == False
 
+    # The ML classifier emits labels with spaces/plurals.  They must still be
+    # subject to the occasion rules, including the Gym/Sport restrictions.
+    sports_tee = WardrobeItemFull(id=4, type="Tshirts", confidence=0.9, color="black", hex="#000", style="Sport")
+    gym_tagged_tee = WardrobeItemFull(id=5, type="Shirts", confidence=0.9, color="black", hex="#000", occasion="Gym")
+    assert engine.validate_outfit([sports_tee], occasion="University") is False
+    assert engine.validate_outfit([sports_tee], occasion="Work") is False
+    assert engine.validate_outfit([gym_tagged_tee], occasion="University") is False
+    assert engine.validate_outfit([sports_tee], occasion="Gym") is True
+    assert engine.validate_outfit([sports_tee], occasion="Travel") is False
+    named_sports_tee = WardrobeItemFull(id=6, type="Sports Tshirts", confidence=0.9, color="black", hex="#000")
+    assert engine.validate_outfit([named_sports_tee], occasion="Work") is False
+
 def test_recommender():
     engine = RuleEngine("rules/fashion_rules.json")
     recommender = Recommender(engine)
@@ -41,6 +53,17 @@ def test_recommender():
     assert len(outfit) > 0
     for item in outfit:
         assert item.category != "suit"
+
+
+def test_recommender_accepts_classifier_labels():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        WardrobeItemFull(id=1, type="Tshirts", confidence=0.9, color="white", hex="#fff", style="Minimal"),
+        WardrobeItemFull(id=2, type="Jeans", confidence=0.9, color="blue", hex="#00f"),
+        WardrobeItemFull(id=3, type="Casual Shoes", confidence=0.9, color="white", hex="#fff"),
+    ]
+    outfit, _ = recommender.recommend(wardrobe, occasion="University")
+    assert {item.id for item in outfit} >= {1, 2}
 
 def test_recommend_endpoint():
     payload = {

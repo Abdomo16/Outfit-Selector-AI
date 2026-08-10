@@ -7,6 +7,11 @@ recommender = Recommender()
 
 @router.post("/", response_model=RecommendResponse)
 def recommend_outfits(request: RecommendRequest):
+    # TEMP DEBUG - remove after diagnosing the sport-tee leak
+    print("[DEBUG request]")
+    for it in request.wardrobe:
+        print(f"  [DEBUG item] type={it.type!r} style={it.style!r} occasion={it.occasion!r}")
+    print(f"  [DEBUG occasion] {request.occasion!r} season={request.season!r}")
     outfit, score = recommender.recommend(
         wardrobe=request.wardrobe,
         occasion=request.occasion,

@@ -21,7 +21,11 @@
             "forbidden_types": [
                 "suit",
                 "tuxedo",
-                "oxford_shoes"
+                "oxford_shoes",
+                "tank_top",
+                "shorts",
+                "tracksuit",
+                "jersey"
             ],
             "forbidden_styles": [
                 "sport"
@@ -36,7 +40,9 @@
                 "flip_flops",
                 "shorts",
                 "sneakers",
-                "tracksuit"
+                "tracksuit",
+                "tank_top",
+                "jersey"
             ],
             "forbidden_styles": [
                 "sport",
@@ -52,7 +58,11 @@
                 "pyjama",
                 "shorts",
                 "flip_flops",
-                "hoodie"
+                "hoodie",
+                "t_shirt",
+                "t_shirt",
+                "t_shirt",
+                "tank_top"
             ],
             "forbidden_styles": [
                 "sport"
@@ -75,7 +85,9 @@
                 "sneakers",
                 "flip_flops",
                 "jeans",
-                "t-shirt",
+                "t_shirt",
+                "t_shirt",
+                "t_shirt",
                 "shorts"
             ],
             "forbidden_styles": [
@@ -89,7 +101,9 @@
         "casual": {
             "allowed_types": [
                 "jeans",
-                "t-shirt",
+                "t_shirt",
+                "t_shirt",
+                "t_shirt",
                 "hoodie",
                 "sneakers",
                 "chinos",
@@ -119,7 +133,11 @@
                 "hoodie",
                 "flip_flops",
                 "shorts",
-                "sneakers"
+                "sneakers",
+                "t_shirt",
+                "t_shirt",
+                "t_shirt",
+                "tank_top"
             ],
             "forbidden_styles": [
                 "sport",
@@ -163,7 +181,11 @@
             "forbidden_types": [
                 "tracksuit",
                 "shoes",
-                "pyjama"
+                "pyjama",
+                "t_shirt",
+                "t_shirt",
+                "t_shirt",
+                "tank_top"
             ],
             "forbidden_styles": [
                 "sport"
