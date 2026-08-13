@@ -60,8 +60,6 @@
                 "flip_flops",
                 "hoodie",
                 "t_shirt",
-                "t_shirt",
-                "t_shirt",
                 "tank_top"
             ],
             "forbidden_styles": [
@@ -85,8 +83,6 @@
                 "sneakers",
                 "flip_flops",
                 "jeans",
-                "t_shirt",
-                "t_shirt",
                 "t_shirt",
                 "shorts"
             ],
@@ -135,8 +131,6 @@
                 "shorts",
                 "sneakers",
                 "t_shirt",
-                "t_shirt",
-                "t_shirt",
                 "tank_top"
             ],
             "forbidden_styles": [
@@ -182,8 +176,6 @@
                 "tracksuit",
                 "shoes",
                 "pyjama",
-                "t_shirt",
-                "t_shirt",
                 "t_shirt",
                 "tank_top"
             ],
