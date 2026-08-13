@@ -18,6 +18,7 @@ class InferencePipeline:
         class_res = self.classifier.predict(image)
         color_res = self.color_detector.predict(image)
         attr_res = self.attribute_extractor.predict(image)
+        embedding = self.attribute_extractor.embed(image)
         
         item_type = class_res["type"]
         if item_type in ["trousers", "jeans", "shorts"]:
@@ -31,7 +32,8 @@ class InferencePipeline:
             "pattern":    attr_res["pattern"],
             "style":      attr_res["style"],
             "occasion":   attr_res["occasion"],
-            "season":     attr_res["season"]
+            "season":     attr_res["season"],
+            "embedding":  embedding
         }
 
     def process_upload(self, image: Image.Image) -> dict:
