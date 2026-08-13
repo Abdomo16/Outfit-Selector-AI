@@ -45,10 +45,13 @@ class ClothingClassifier:
         if self.model is None or tf is None:
             return {"type": "unknown", "confidence": 0.0}
 
+        from tensorflow.keras.applications.efficientnet import preprocess_input
+
         image = image.convert("RGB")
         image = image.resize((224, 224))
         
         img_array = np.array(image, dtype=np.float32)
+        img_array = preprocess_input(img_array)
         img_tensor = np.expand_dims(img_array, axis=0)
 
         predictions = self.model.predict(img_tensor, verbose=0)[0]
