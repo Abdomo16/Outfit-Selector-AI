@@ -4,8 +4,8 @@ from PIL import Image
 from ultralytics import YOLO
 
 class Segmenter:
-    def __init__(self, model_path="weights/segmentation.pt"):
-        self.model_path = model_path
+    def __init__(self, model_path: str = None):
+        self.model_path = model_path or os.environ.get("YOLO_WEIGHTS_PATH", "weights/segmentation.pt")
         base_dir = Path(__file__).resolve().parent.parent.parent
         model_full_path = base_dir / self.model_path
         # Load the fine-tuned model if it exists, otherwise fall back to pure YOLOv8m-seg

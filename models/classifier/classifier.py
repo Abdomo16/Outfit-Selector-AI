@@ -11,9 +11,9 @@ except ImportError:
 from PIL import Image
 
 class ClothingClassifier:
-    def __init__(self, weights_path: str = "weights/best_model_phase2 (3).keras", classes_json: str = "weights/classes_best_model_phase2.json"):
-        self.weights_path = weights_path
-        self.classes_json = classes_json
+    def __init__(self, weights_path: str = None, classes_json: str = None):
+        self.weights_path = weights_path or os.environ.get("CLASSIFIER_WEIGHTS_PATH", "weights/best_model_phase2 (3).keras")
+        self.classes_json = classes_json or os.environ.get("CLASSES_JSON_PATH", "weights/classes_best_model_phase2.json")
         self.class_names = self._load_classes()
         self.model = self._load_model()
         
