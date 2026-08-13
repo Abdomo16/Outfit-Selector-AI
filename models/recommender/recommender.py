@@ -20,7 +20,9 @@ class Recommender:
         so 'Regenerate' actually shows something new when alternatives exist.
         """
         if len(top_candidates) <= 1:
-            return top_candidates[0]
+            chosen = top_candidates[0]
+            self._last_outfit_ids = self._outfit_signature(chosen[1])
+            return chosen
 
         distinct = [
             s for s in top_candidates
