@@ -1,11 +1,15 @@
-FastAPI
+fastapi
 uvicorn
 torch
 torchvision
+transformers
 ultralytics
 opencv-python
 scikit-learn
 Pillow
-sqlalchemy
+numpy
 python-multipart
 tensorflow
+python-dotenv
+pytest
+requests

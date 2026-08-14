@@ -69,6 +69,16 @@ class AttributeExtractor:
             "season": season
         }
 
+    def embed(self, image: Image.Image) -> list:
+        """Return a normalised 512-dim CLIP image embedding."""
+        img = image.convert("RGB")
+        inputs = self.processor(images=img, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            outputs = self.model.get_image_features(**inputs)
+            features = outputs.pooler_output if hasattr(outputs, "pooler_output") else outputs
+        features = features / features.norm(dim=-1, keepdim=True)
+        return features.squeeze(0).cpu().tolist()
+
     def get_pants_type(self, image: Image.Image) -> str:
         """
         Refines a generic 'trousers' or 'jeans' type down to exactly what it is.

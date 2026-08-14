@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 from typing import List
 from api.schemas import WardrobeItemFull
 
@@ -51,7 +53,9 @@ def is_sport_item(item: WardrobeItemFull) -> bool:
 
 
 class RuleEngine:
-    def __init__(self, rules_path: str = "rules/fashion_rules.json"):
+    def __init__(self, rules_path: str = None):
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        rules_path = rules_path or os.environ.get("FASHION_RULES_PATH", str(base_dir / "rules" / "fashion_rules.json"))
         with open(rules_path, "r") as f:
             self.rules = json.load(f)
             
@@ -60,9 +64,7 @@ class RuleEngine:
 
         occasion_key = normalise_label(occasion)
 
-        # Sport-tagged items are deliberately gym-only.  This is evaluated
-        # independently of the JSON rule file so a newly added occasion (such as
-        # Travel) or an occasion missing from the rules can never accidentally
+        
         # recommend gym wear.
         if occasion_key and occasion_key != "gym":
             for item in items:
