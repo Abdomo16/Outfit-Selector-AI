@@ -39,6 +39,41 @@ class AttributeExtractor:
             "a photo of shorts"
         ]
 
+        # 6. Garment types — mirrors the keras classifier's 23 classes.
+        #    Used as a zero-shot fallback when the keras classifier is unsure.
+        self.garment_types = [
+            "Backpacks", "Belts", "Briefs", "Casual Shoes", "Flats",
+            "Flip Flops", "Formal Shoes", "Handbags", "Heels", "Jeans",
+            "Kurtas", "Perfume and Body Mist", "Sandals", "Shirts",
+            "Shorts", "Socks", "Sports Shoes", "Sunglasses", "Tops",
+            "Trousers", "Tshirts", "Wallets", "Watches"
+        ]
+        self.garment_prompts = [
+            "a photo of a backpack",
+            "a photo of a belt",
+            "a photo of underwear briefs",
+            "a photo of casual shoes sneakers",
+            "a photo of women's flat shoes",
+            "a photo of flip flop sandals",
+            "a photo of formal leather dress shoes",
+            "a photo of a woman's handbag purse",
+            "a photo of women's high heel shoes",
+            "a photo of denim jeans pants",
+            "a photo of a traditional kurta",
+            "a photo of a perfume bottle",
+            "a photo of sandals",
+            "a photo of a button-up collared shirt",
+            "a photo of shorts pants",
+            "a photo of socks",
+            "a photo of athletic sports running shoes",
+            "a photo of sunglasses",
+            "a photo of a woman's casual top blouse",
+            "a photo of formal trousers pants",
+            "a photo of a t-shirt",
+            "a photo of a wallet",
+            "a photo of a wrist watch"
+        ]
+
     def _get_best_match(self, image: Image.Image, choices: list, prompts: list) -> str:
         # Pass the image and text prompts to the model
         inputs = self.processor(text=prompts, images=image, return_tensors="pt", padding=True).to(self.device)
@@ -69,9 +104,37 @@ class AttributeExtractor:
             "season": season
         }
 
-    def get_pants_type(self, image: Image.Image) -> str:
+    def get_pants_type(self, image: Image.Image) -> tuple:
         """
         Refines a generic 'trousers' or 'jeans' type down to exactly what it is.
+        Returns (type, confidence).
         """
         img = image.convert("RGB")
-        return self._get_best_match(img, self.pants_types, self.pants_prompts)
+        inputs = self.processor(
+            text=self.pants_prompts, images=img,
+            return_tensors="pt", padding=True
+        ).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = outputs.logits_per_image.softmax(dim=1)[0]
+        best_idx = probs.argmax().item()
+        return self.pants_types[best_idx], float(probs[best_idx])
+
+    def classify_type(self, image: Image.Image) -> tuple:
+        """
+        Zero-shot garment-type classification over the same 23 classes as the
+        keras classifier. Returns (type, confidence).
+
+        Used as a fallback when the keras classifier's confidence is too low
+        to trust — CLIP generalises much better to real-world photos.
+        """
+        img = image.convert("RGB")
+        inputs = self.processor(
+            text=self.garment_prompts, images=img,
+            return_tensors="pt", padding=True
+        ).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = outputs.logits_per_image.softmax(dim=1)[0]
+        best_idx = probs.argmax().item()
+        return self.garment_types[best_idx].lower(), float(probs[best_idx])
