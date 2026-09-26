@@ -17,13 +17,16 @@ async def try_on(
     Virtual Try-On Endpoint.
     Accepts a base image of a person/mannequin and a list of clothing items to map on.
     """
-    if not base_image.content_type.startswith("image/"):
+    if not base_image.content_type or not base_image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Base image must be a valid image file.")
 
     try:
         items = json.loads(wardrobe_items)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="wardrobe_items must be a valid JSON string array.")
+
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail="wardrobe_items must be a JSON array.")
 
     contents = await base_image.read()
     try:
