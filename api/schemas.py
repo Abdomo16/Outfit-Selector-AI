@@ -6,14 +6,15 @@ from typing import List, Optional, Union
 
 class WardrobeItemBasic(BaseModel):
     """Returned by /wardrobe/upload in Phase 2 (no DB, no embeddings yet)."""
-    type:       str
-    confidence: float
-    color:      str
-    hex:        str
+    type:        str
+    confidence:  float
+    color:       str
+    hex:         str
+    crop_base64: Optional[str] = None
 
 
 class UploadResponse(BaseModel):
-    items: List[WardrobeItemBasic]
+    items: List[WardrobeItemFull]
 
 
 # Phase 4+: Full Wardrobe Item 

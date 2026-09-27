@@ -7,17 +7,12 @@ from ultralytics import YOLO
 
 
 class Segmenter:
-    def __init__(self, model_path="weights/segmentation.pt"):
+    def __init__(self, model_path="weights/deepfashion2_yolov8s-seg.pt"):
         self.model_path = model_path
         base_dir = Path(__file__).resolve().parent.parent.parent
         model_full_path = base_dir / self.model_path
-        df2_path = base_dir / "weights" / "deepfashion2_yolov8s-seg.pt"
 
-        # Prefer the DeepFashion2-pretrained model — it detects all garment
-        # pieces (tops AND bottoms) with reliable masks out of the box.
-        if os.path.exists(df2_path):
-            self.model = YOLO(str(df2_path))
-        elif os.path.exists(model_full_path):
+        if os.path.exists(model_full_path):
             self.model = YOLO(str(model_full_path))
         else:
             self.model = YOLO("yolov8m-seg.pt")

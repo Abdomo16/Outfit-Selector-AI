@@ -29,15 +29,21 @@ Outfit Selector AI is an intelligent wardrobe management and outfit recommendati
    ```bash
    pip install -r requirements.txt
    ```
-3. Copy the `.env.example` file to `.env` and fill in your configurations.
+3. Copy the `.env.example` file to `.env` and fill in your Supabase credentials (`SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY`).
 4. Ensure all corresponding model weights are correctly placed inside the `weights/` directory (`yolov8m-seg.pt`, etc.).
 5. Start the application backend locally:
    ```bash
    uvicorn api.main:app --reload
    ```
 
+### Supabase Setup
+The backend uses Supabase for persistence and image storage:
+- The `wardrobe_items` table stores segmented clothing metadata.
+- The `wardrobe-images` storage bucket holds the cropped item images.
+- On the first upload, the bucket is created automatically if it does not exist.
+
 ### Docker Deployment (Production)
-Build and run the production-ready Docker container:
+Build and run the production-ready Docker container. Make sure your `.env` file contains the Supabase credentials:
 ```bash
 docker build -t outfit-selector .
 docker run -p 8000:8000 --env-file .env outfit-selector
