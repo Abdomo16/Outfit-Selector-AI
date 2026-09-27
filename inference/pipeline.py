@@ -123,6 +123,7 @@ class InferencePipeline:
             ranked = self.color_detector.predict_ranked(box_crop, mask=None, row_band=band)
 
             results.append({
+                "crop": crop,
                 **class_res,
                 "ranked_colors": ranked,
                 "pattern": attr_res["pattern"],
@@ -210,6 +211,7 @@ class InferencePipeline:
         for i, res in enumerate(results):
             pick = picks[i]
             items.append({
+                "crop":       res["crop"],
                 "type":       res["type"],
                 "confidence": res["confidence"],
                 "color":      pick["color"],

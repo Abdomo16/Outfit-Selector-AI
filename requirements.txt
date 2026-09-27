@@ -13,3 +13,4 @@ tensorflow
 python-dotenv
 pytest
 requests
+supabase
