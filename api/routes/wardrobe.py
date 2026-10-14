@@ -75,6 +75,7 @@ def upload_wardrobe_item(
         crop = item.pop("crop", None)
 
         payload = {
+            "id": str(uuid.uuid4()),
             "user_id": user_id,
             "type": item.get("type"),
             "confidence": float(item.get("confidence", 0)),
@@ -82,7 +83,6 @@ def upload_wardrobe_item(
             "hex": item.get("hex"),
             "pattern": item.get("pattern"),
             "style": item.get("style"),
-            "occasion": item.get("occasion"),
             "season": item.get("season"),
             "embedding": item.get("embedding"),
         }
@@ -110,7 +110,7 @@ def upload_wardrobe_item(
             hex=record["hex"],
             pattern=record.get("pattern"),
             style=record.get("style"),
-            occasion=record.get("occasion"),
+            occasion=item.get("occasion"),
             season=record.get("season"),
             embedding=record.get("embedding"),
             image_path=image_url,
