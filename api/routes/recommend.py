@@ -7,12 +7,22 @@ recommender = Recommender()
 
 @router.post("/", response_model=RecommendResponse)
 def recommend_outfits(request: RecommendRequest):
-    outfit, score = recommender.recommend(
+    result = recommender.recommend(
         wardrobe=request.wardrobe,
         occasion=request.occasion,
-        season=request.season
+        season=request.season,
+        weather=request.weather,
+        style=request.style,
+        lock_ids=request.lock_ids,
+        swap_id=request.swap_id,
     )
-    if not outfit:
+    if not result.outfit:
         raise HTTPException(status_code=404, detail="No valid combinations found for the given rules.")
-        
-    return RecommendResponse(outfit=outfit, score=score, occasion=request.occasion)
+
+    return RecommendResponse(
+        outfit=result.outfit,
+        score=result.score,
+        color_score=result.color_score,
+        reasons=result.reasons,
+        occasion=request.occasion,
+    )

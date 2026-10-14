@@ -1,8 +1,49 @@
-from typing import List, Tuple
-from api.schemas import WardrobeItemFull, OutfitItem
-from models.recommender.rule_engine import RuleEngine, normalise_type, normalise_label, is_sport_item
-from models.recommender.similarity import cosine_similarity
+from typing import List, NamedTuple, Optional, Sequence, Tuple, Union
 import random
+
+from api.schemas import OutfitItem, WardrobeItemFull
+from models.recommender.rule_engine import RuleEngine, is_sport_item, normalise_label, normalise_type
+
+TOPS = {
+    "t_shirt", "hoodie", "dress_shirt", "blouse", "wool_sweater", "polo",
+    "tank_top", "shirt", "top", "sweater", "jersey",
+}
+BOTTOMS = {"jeans", "trousers", "chinos", "shorts", "skirt", "leggings", "joggers"}
+SHOES = {
+    "sneakers", "oxford_shoes", "flip_flops", "loafers", "shoes", "heels",
+    "boots", "sandals", "shoe", "boot", "sneaker", "sandal", "flats",
+}
+OUTERWEAR = {"blazer", "suit", "heavy_coat", "outerwear", "outwear", "jacket", "coat"}
+ONE_PIECE = {"dress", "tracksuit", "tuxedo", "pyjama", "kurta"}
+ZONES = {
+    "top": TOPS,
+    "bottom": BOTTOMS,
+    "shoes": SHOES,
+    "outerwear": OUTERWEAR,
+    "one_piece": ONE_PIECE,
+}
+
+ItemId = Union[int, str]
+
+
+class RecommendResult(NamedTuple):
+    outfit: List[OutfitItem]
+    score: float
+    color_score: float
+    reasons: List[str]
+
+
+def _item_key(item_id: Optional[ItemId]) -> str:
+    return "" if item_id is None else str(item_id)
+
+
+def _zone(item: WardrobeItemFull) -> Optional[str]:
+    label = normalise_type(item.type)
+    for name, types in ZONES.items():
+        if label in types:
+            return name
+    return None
+
 
 class Recommender:
     def __init__(self, rule_engine: RuleEngine = None):
@@ -15,9 +56,8 @@ class Recommender:
 
     def _pick_outfit(self, top_candidates: List[Tuple[float, List[WardrobeItemFull]]]):
         """
-        Fix: Resolves the issue where regenerating recommends the exact same item.
         Pick a top candidate, preferring one that differs from the last pick
-        so 'Regenerate' actually shows something new when alternatives exist.
+        so 'Regenerate' shows something new when alternatives exist.
         """
         if len(top_candidates) <= 1:
             chosen = top_candidates[0]
@@ -36,17 +76,14 @@ class Recommender:
         return chosen
 
     def _generate_candidates(self, wardrobe: List[WardrobeItemFull]) -> List[List[WardrobeItemFull]]:
-        # A simple wardrobe grammar.  Always compare canonical classifier labels;
-        # the uploaded type is retained in the response for the client.
-        tops = [i for i in wardrobe if normalise_type(i.type) in {"t_shirt", "hoodie", "dress_shirt", "blouse", "wool_sweater", "polo", "tank_top", "shirt", "top", "sweater", "jersey"}]
-        bottoms = [i for i in wardrobe if normalise_type(i.type) in {"jeans", "trousers", "chinos", "shorts", "skirt", "leggings", "joggers"}]
-        shoes = [i for i in wardrobe if normalise_type(i.type) in {"sneakers", "oxford_shoes", "flip_flops", "loafers", "shoes", "heels", "boots", "sandals", "shoe", "boot", "sneaker", "sandal", "flats"}]
-        outerwear = [i for i in wardrobe if normalise_type(i.type) in {"blazer", "suit", "heavy_coat", "outerwear", "outwear", "jacket", "coat"}]
-        one_piece = [i for i in wardrobe if normalise_type(i.type) in {"dress", "tracksuit", "tuxedo", "pyjama", "kurta"}]
-        
+        tops = [i for i in wardrobe if normalise_type(i.type) in TOPS]
+        bottoms = [i for i in wardrobe if normalise_type(i.type) in BOTTOMS]
+        shoes = [i for i in wardrobe if normalise_type(i.type) in SHOES]
+        outerwear = [i for i in wardrobe if normalise_type(i.type) in OUTERWEAR]
+        one_piece = [i for i in wardrobe if normalise_type(i.type) in ONE_PIECE]
+
         candidates = []
-        
-        # combinations: top + bottom + optional outerwear + optional shoes
+
         if tops and bottoms:
             for t in tops:
                 for b in bottoms:
@@ -58,100 +95,150 @@ class Recommender:
                         if outerwear:
                             combos.extend([[t, b, o, s] for o in outerwear for s in shoes])
                     candidates.extend(combos)
-                    
-        # combinations: one-piece + optional shoes + optional outerwear
+
         if one_piece:
             for o in one_piece:
                 combos = [[o]]
                 if outerwear:
-                     combos.extend([[o, out] for out in outerwear])
+                    combos.extend([[o, out] for out in outerwear])
                 if shoes:
-                     combos.extend([[o, s] for s in shoes])
-                     if outerwear:
-                         combos.extend([[o, out, s] for out in outerwear for s in shoes])
+                    combos.extend([[o, s] for s in shoes])
+                    if outerwear:
+                        combos.extend([[o, out, s] for out in outerwear for s in shoes])
                 candidates.extend(combos)
-                    
+
         return candidates
 
-    def _score_outfit(self, outfit: List[WardrobeItemFull]) -> float:
-        """Score an outfit by pairwise cosine similarity + a completeness bonus.
-        
-        Single items are penalised (0.3 base) so they never beat a real combo.
-        Multi-item outfits get a bonus for each extra item to reward completeness.
-        """
-        n = len(outfit)
+    def _style_filtered(self, wardrobe: List[WardrobeItemFull], style: Optional[str]) -> List[WardrobeItemFull]:
+        if not style:
+            return wardrobe
+        wanted = normalise_label(style)
+        return [
+            item for item in wardrobe
+            if not item.style or normalise_label(item.style) == wanted
+        ]
 
-        # Single item — penalise heavily so it only wins if nothing else passes rules
-        if n <= 1:
-            return 0.3
+    def _passes_lock_and_swap(
+        self,
+        candidate: List[WardrobeItemFull],
+        lock_ids: Sequence[str],
+        swap_id: Optional[str],
+        swapped_item: Optional[WardrobeItemFull],
+    ) -> bool:
+        keys = {_item_key(item.id) for item in candidate}
+        if lock_ids and not set(lock_ids).issubset(keys):
+            return False
+        if swap_id and swap_id in keys:
+            return False
+        if swapped_item is not None:
+            zone = _zone(swapped_item)
+            if zone is not None:
+                filled = any(
+                    _zone(item) == zone and _item_key(item.id) != swap_id
+                    for item in candidate
+                )
+                if not filled:
+                    return False
+        return True
 
-        # Pairwise cosine similarity
-        total = 0.0
-        pairs = 0
-        for i in range(n):
-            for j in range(i + 1, n):
-                emb1 = outfit[i].embedding
-                emb2 = outfit[j].embedding
-                if emb1 and emb2:
-                    total += cosine_similarity(emb1, emb2)
-                else:
-                    total += 0.5   # neutral fallback when embeddings are missing
-                pairs += 1
-
-        similarity_score = total / pairs if pairs > 0 else 0.5
-
-        # Completeness bonus: +0.05 per item (encourages 3-piece > 2-piece)
-        completeness_bonus = (n - 1) * 0.05
-
-        return min(similarity_score + completeness_bonus, 1.0)
-
-    def recommend(self, wardrobe: List[WardrobeItemFull], occasion: str = None, season: str = None) -> Tuple[List[OutfitItem], float]:
+    def _collect(
+        self,
+        wardrobe: List[WardrobeItemFull],
+        occasion: Optional[str],
+        season: Optional[str],
+        weather: Optional[str],
+        lock_ids: Sequence[str],
+        swap_id: Optional[str],
+        swapped_item: Optional[WardrobeItemFull],
+    ) -> List[Tuple[float, List[WardrobeItemFull]]]:
         candidates = self._generate_candidates(wardrobe)
-        
-        # Shuffle first so equal-scored candidates aren't always in the same order
         random.shuffle(candidates)
-
         scored: List[Tuple[float, List[WardrobeItemFull]]] = []
 
-        for candidate in candidates:
-            # 1. Filter by rules
-            if not self.rule_engine.validate_outfit(candidate, occasion, season):
-                continue
+        def keep(candidate: List[WardrobeItemFull], occasion_key: Optional[str]) -> bool:
+            if not self._passes_lock_and_swap(candidate, lock_ids, swap_id, swapped_item):
+                return False
+            return self.rule_engine.validate_outfit(candidate, occasion_key, season, weather)
 
-            # 2. Score outfit
-            score = self._score_outfit(candidate)
-            scored.append((score, candidate))
-            
-        # Fallback: if no candidates passed rules, try ignoring the occasion constraint
+        for candidate in candidates:
+            if not keep(candidate, occasion):
+                continue
+            color_score, _ = self.rule_engine.score_colors(candidate)
+            scored.append((color_score, candidate))
+
         if not scored and occasion:
             for candidate in candidates:
-                # Gym/sport wear must stay gym-only even on the relaxed fallback
-                # path, otherwise an empty result quietly leaks sporty items.
                 if normalise_label(occasion) != "gym" and any(is_sport_item(item) for item in candidate):
                     continue
-                if not self.rule_engine.validate_outfit(candidate, occasion=None, season=season):
+                if not keep(candidate, None):
                     continue
-                score = self._score_outfit(candidate)
-                # Penalise fallback candidates so they don't seem as good as proper ones
-                scored.append((score - 0.2, candidate))
+                color_score, _ = self.rule_engine.score_colors(candidate)
+                scored.append((color_score, candidate))
+
+        return scored
+
+    def _reasons(
+        self,
+        outfit: List[WardrobeItemFull],
+        season: Optional[str],
+        weather: Optional[str],
+        style: Optional[str],
+        style_relaxed: bool,
+        color_reasons: List[str],
+    ) -> List[str]:
+        reasons: List[str] = []
+        if weather:
+            reasons.append(f"Works in {weather} weather.")
+        if season:
+            reasons.append(f"Works for {season}.")
+        if style_relaxed:
+            reasons.append("Style filter relaxed so an outfit could be made.")
+        elif style:
+            reasons.append(f"Matches {style}.")
+        reasons.extend(color_reasons[:3])
+        if any(reason.startswith("Some colors") for reason in color_reasons):
+            neutral = "Some colors have no rule, so they stay neutral."
+            if neutral not in reasons:
+                reasons.append(neutral)
+        return reasons
+
+    def recommend(
+        self,
+        wardrobe: List[WardrobeItemFull],
+        occasion: str = None,
+        season: str = None,
+        weather: str = None,
+        style: str = None,
+        lock_ids: Optional[Sequence[ItemId]] = None,
+        swap_id: Optional[ItemId] = None,
+    ) -> RecommendResult:
+        locks = [_item_key(item_id) for item_id in (lock_ids or []) if _item_key(item_id)]
+        swap_key = _item_key(swap_id) or None
+        if swap_key:
+            locks = [item_id for item_id in locks if item_id != swap_key]
+        swapped_item = next((item for item in wardrobe if _item_key(item.id) == swap_key), None) if swap_key else None
+
+        styled = self._style_filtered(wardrobe, style)
+        scored = self._collect(styled, occasion, season, weather, locks, swap_key, swapped_item)
+        style_relaxed = False
+        if not scored and style:
+            scored = self._collect(wardrobe, occasion, season, weather, locks, swap_key, swapped_item)
+            style_relaxed = bool(scored)
 
         if not scored:
-            return [], 0.0
+            return RecommendResult([], 0.0, 0.0, [])
 
-        # Sort descending by score
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        # Prefer complete outfits: only consider multi-item candidates if any exist,
-        # otherwise single items (e.g. a dress) are the only option.
-        multi = [s for s in scored if len(s[1]) > 1]
-        pool = multi if multi else scored
-
-        # Select randomly from top candidates to increase variety on Regenerate
-        best_overall_score = pool[0][0]
-        # Include any candidate that scores within 0.1 of the top score
-        top_candidates = [s for s in pool if s[0] >= best_overall_score - 0.1]
-
-        best_score, best_outfit = self._pick_outfit(top_candidates)
+        scored.sort(key=lambda row: (row[0], len(row[1])), reverse=True)
+        pool = scored
+        best_score = pool[0][0]
+        best_len = len(pool[0][1])
+        top_candidates = [
+            row for row in pool
+            if row[0] == best_score and len(row[1]) == best_len
+        ]
+        _, best_outfit = self._pick_outfit(top_candidates)
+        color_score, color_reasons = self.rule_engine.score_colors(best_outfit)
+        reasons = self._reasons(best_outfit, season, weather, style, style_relaxed, color_reasons)
 
         outfit_items = [
             OutfitItem(
@@ -162,9 +249,8 @@ class Recommender:
                 style=item.style,
                 pattern=item.pattern,
                 season=item.season,
-                imageUrl=item.image_path
-            ) 
+                imageUrl=item.image_path,
+            )
             for item in best_outfit
         ]
-        
-        return outfit_items, max(best_score, 0.0)
+        return RecommendResult(outfit_items, color_score, color_score, reasons)

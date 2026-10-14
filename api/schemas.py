@@ -13,14 +13,10 @@ class WardrobeItemBasic(BaseModel):
     crop_base64: Optional[str] = None
 
 
-class UploadResponse(BaseModel):
-    items: List[WardrobeItemFull]
-
-
 # Phase 4+: Full Wardrobe Item 
 
 class WardrobeItemFull(BaseModel):
-    id:          Optional[int] = None
+    id:          Optional[Union[int, str]] = None
     type:        str
     confidence:  float
     color:       str
@@ -33,6 +29,10 @@ class WardrobeItemFull(BaseModel):
     image_path:  Optional[str] = None
 
 
+class UploadResponse(BaseModel):
+    items: List[WardrobeItemFull]
+
+
 #  Phase 5: Recommend 
 
 class RecommendRequest(BaseModel):
@@ -40,6 +40,9 @@ class RecommendRequest(BaseModel):
     occasion:  str
     weather:   Optional[str] = None
     season:    Optional[str] = None
+    style:     Optional[str] = None
+    lock_ids:  Optional[List[Union[int, str]]] = None
+    swap_id:   Optional[Union[int, str]] = None
 
 
 class OutfitItem(BaseModel):
@@ -56,4 +59,6 @@ class OutfitItem(BaseModel):
 class RecommendResponse(BaseModel):
     outfit:  List[OutfitItem]
     score:   float
+    color_score: float
+    reasons: List[str] = []
     occasion: str
