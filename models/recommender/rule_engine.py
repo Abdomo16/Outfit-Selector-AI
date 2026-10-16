@@ -59,7 +59,13 @@ class RuleEngine:
         with open(rules_path, "r") as f:
             self.rules = json.load(f)
             
-    def validate_outfit(self, items: List[WardrobeItemFull], occasion: str = None, season: str = None) -> bool:
+    def validate_outfit(
+        self,
+        items: List[WardrobeItemFull],
+        occasion: str = None,
+        season: str = None,
+        weather: str = None,
+    ) -> bool:
         item_types = [normalise_type(item.type) for item in items]
 
         occasion_key = normalise_label(occasion)
@@ -102,5 +108,50 @@ class RuleEngine:
             for t in item_types:
                 if t in forbidden:
                     return False
-                    
+
+        # 3. Live weather. "everyday" has no occasion list, so this still applies.
+        weather_key = normalise_label(weather)
+        if weather_key and weather_key in self.rules.get("weather_rules", {}):
+            weather_rule = self.rules["weather_rules"][weather_key]
+            forbidden = {normalise_type(value) for value in weather_rule.get("forbidden_types", [])}
+            for t in item_types:
+                if t in forbidden:
+                    return False
+
         return True
+
+    def score_colors(self, items: List[WardrobeItemFull]) -> tuple[float, list[str]]:
+        """Average pairwise color compatibility. Unknown colors score 0.5."""
+        rules = self.rules.get("color_rules", {})
+        if len(items) < 2:
+            return 0.5, []
+
+        scores: list[float] = []
+        reasons: list[str] = []
+        unknown = False
+
+        def allows(rule: list, other: str) -> bool:
+            return "matches_all" in rule or other in rule
+
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                left = items[i].color or ""
+                right = items[j].color or ""
+                left_key = left.lower().strip()
+                right_key = right.lower().strip()
+                left_rule = rules.get(left_key)
+                right_rule = rules.get(right_key)
+                if left_rule is None or right_rule is None:
+                    scores.append(0.5)
+                    unknown = True
+                    continue
+                if allows(left_rule, right_key) or allows(right_rule, left_key):
+                    scores.append(1.0)
+                    reasons.append(f"{left} pairs with {right}.")
+                else:
+                    scores.append(0.0)
+                    reasons.append(f"{left} clashes with {right}.")
+
+        if unknown:
+            reasons.append("Some colors have no rule, so they stay neutral.")
+        return sum(scores) / len(scores), reasons

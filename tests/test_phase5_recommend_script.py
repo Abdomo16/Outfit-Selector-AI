@@ -30,7 +30,7 @@ def run_tests():
         WardrobeItemFull(id=3, type="sneakers", confidence=0.9, color="white", hex="#fff", embedding=[0.0, 1.0]),
         WardrobeItemFull(id=4, type="suit", confidence=0.9, color="black", hex="#000", embedding=[0.5, 0.5])
     ]
-    outfit, score = recommender.recommend(wardrobe, occasion="casual")
+    outfit, score = recommender.recommend(wardrobe, occasion="casual")[:2]
     assert len(outfit) > 0
     for item in outfit:
         assert item.category != "suit"

@@ -2,7 +2,7 @@ import base64
 import io
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
 
 from api.schemas import WardrobeItemFull
@@ -42,7 +42,11 @@ def _upload_crop(image: Image.Image, item_id: int) -> str:
 
 
 @router.post("/upload")
-def upload_wardrobe_item(request: Request, file: UploadFile = File(...)):
+def upload_wardrobe_item(
+    request: Request,
+    file: UploadFile = File(...),
+    user_id: str | None = Form(None),
+):
     """
     Accept an image of a clothing item.
     Segments the image, persists each detected item to Supabase, uploads the
@@ -71,13 +75,14 @@ def upload_wardrobe_item(request: Request, file: UploadFile = File(...)):
         crop = item.pop("crop", None)
 
         payload = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
             "type": item.get("type"),
             "confidence": float(item.get("confidence", 0)),
             "color": item.get("color"),
             "hex": item.get("hex"),
             "pattern": item.get("pattern"),
             "style": item.get("style"),
-            "occasion": item.get("occasion"),
             "season": item.get("season"),
             "embedding": item.get("embedding"),
         }
@@ -105,7 +110,7 @@ def upload_wardrobe_item(request: Request, file: UploadFile = File(...)):
             hex=record["hex"],
             pattern=record.get("pattern"),
             style=record.get("style"),
-            occasion=record.get("occasion"),
+            occasion=item.get("occasion"),
             season=record.get("season"),
             embedding=record.get("embedding"),
             image_path=image_url,

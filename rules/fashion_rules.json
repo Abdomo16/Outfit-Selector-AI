@@ -261,5 +261,26 @@
                 "tank_top"
             ]
         }
+    },
+    "weather_rules": {
+        "rain": {
+            "forbidden_types": [
+                "sandals",
+                "flip_flops"
+            ]
+        },
+        "cold": {
+            "forbidden_types": [
+                "shorts",
+                "tank_top",
+                "sandals"
+            ]
+        },
+        "hot": {
+            "forbidden_types": [
+                "heavy_coat",
+                "wool_sweater"
+            ]
+        }
     }
 }
