@@ -43,6 +43,12 @@ class RecommendRequest(BaseModel):
     style:     Optional[str] = None
     lock_ids:  Optional[List[Union[int, str]]] = None
     swap_id:   Optional[Union[int, str]] = None
+    exclude_ids: Optional[List[Union[int, str]]] = None
+
+
+class ReasonCode(BaseModel):
+    code: str
+    colors: List[str] = []
 
 
 class OutfitItem(BaseModel):
@@ -61,4 +67,5 @@ class RecommendResponse(BaseModel):
     score:   float
     color_score: float
     reasons: List[str] = []
+    reason_codes: List[ReasonCode] = []
     occasion: str
