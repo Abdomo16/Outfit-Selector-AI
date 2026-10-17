@@ -1,7 +1,7 @@
 from typing import List, NamedTuple, Optional, Sequence, Tuple, Union
 import random
 
-from api.schemas import OutfitItem, WardrobeItemFull
+from api.schemas import OutfitItem, ReasonCode, WardrobeItemFull
 from models.recommender.rule_engine import RuleEngine, is_sport_item, normalise_label, normalise_type
 
 TOPS = {
@@ -31,6 +31,7 @@ class RecommendResult(NamedTuple):
     score: float
     color_score: float
     reasons: List[str]
+    reason_codes: List[ReasonCode]
 
 
 def _item_key(item_id: Optional[ItemId]) -> str:
@@ -163,7 +164,7 @@ class Recommender:
         for candidate in candidates:
             if not keep(candidate, occasion):
                 continue
-            color_score, _ = self.rule_engine.score_colors(candidate)
+            color_score, _, _ = self.rule_engine.score_colors(candidate)
             scored.append((color_score, candidate))
 
         if not scored and occasion:
@@ -172,7 +173,7 @@ class Recommender:
                     continue
                 if not keep(candidate, None):
                     continue
-                color_score, _ = self.rule_engine.score_colors(candidate)
+                color_score, _, _ = self.rule_engine.score_colors(candidate)
                 scored.append((color_score, candidate))
 
         return scored
@@ -185,22 +186,36 @@ class Recommender:
         style: Optional[str],
         style_relaxed: bool,
         color_reasons: List[str],
-    ) -> List[str]:
+        color_codes: List[tuple],
+        repeated: bool,
+    ) -> tuple:
         reasons: List[str] = []
+        codes: List[ReasonCode] = []
         if weather:
             reasons.append(f"Works in {weather} weather.")
+            codes.append(ReasonCode(code="weather"))
         if season:
             reasons.append(f"Works for {season}.")
+            codes.append(ReasonCode(code="season"))
         if style_relaxed:
             reasons.append("Style filter relaxed so an outfit could be made.")
+            codes.append(ReasonCode(code="style_relaxed"))
         elif style:
             reasons.append(f"Matches {style}.")
+            codes.append(ReasonCode(code="style_match"))
+        if repeated:
+            reasons.append("Repeated a piece because the wardrobe is small.")
+            codes.append(ReasonCode(code="repeated_piece"))
         reasons.extend(color_reasons[:3])
-        if any(reason.startswith("Some colors") for reason in color_reasons):
+        for code, colors in color_codes[:3]:
+            codes.append(ReasonCode(code=code, colors=colors))
+        if any(code == "color_neutral" for code, _ in color_codes):
             neutral = "Some colors have no rule, so they stay neutral."
             if neutral not in reasons:
                 reasons.append(neutral)
-        return reasons
+            if not any(item.code == "color_neutral" for item in codes):
+                codes.append(ReasonCode(code="color_neutral"))
+        return reasons, codes
 
     def recommend(
         self,
@@ -211,22 +226,37 @@ class Recommender:
         style: str = None,
         lock_ids: Optional[Sequence[ItemId]] = None,
         swap_id: Optional[ItemId] = None,
+        exclude_ids: Optional[Sequence[ItemId]] = None,
     ) -> RecommendResult:
         locks = [_item_key(item_id) for item_id in (lock_ids or []) if _item_key(item_id)]
         swap_key = _item_key(swap_id) or None
         if swap_key:
             locks = [item_id for item_id in locks if item_id != swap_key]
         swapped_item = next((item for item in wardrobe if _item_key(item.id) == swap_key), None) if swap_key else None
+        excluded = {
+            _item_key(item_id)
+            for item_id in (exclude_ids or [])
+            if _item_key(item_id) and _item_key(item_id) not in locks
+        }
 
-        styled = self._style_filtered(wardrobe, style)
-        scored = self._collect(styled, occasion, season, weather, locks, swap_key, swapped_item)
-        style_relaxed = False
-        if not scored and style:
-            scored = self._collect(wardrobe, occasion, season, weather, locks, swap_key, swapped_item)
-            style_relaxed = bool(scored)
+        def score_wardrobe(source: List[WardrobeItemFull]):
+            styled = self._style_filtered(source, style)
+            found = self._collect(styled, occasion, season, weather, locks, swap_key, swapped_item)
+            relaxed = False
+            if not found and style:
+                found = self._collect(source, occasion, season, weather, locks, swap_key, swapped_item)
+                relaxed = bool(found)
+            return found, relaxed
+
+        active = [item for item in wardrobe if _item_key(item.id) not in excluded]
+        scored, style_relaxed = score_wardrobe(active)
+        repeated = False
+        if not scored and excluded:
+            scored, style_relaxed = score_wardrobe(wardrobe)
+            repeated = bool(scored)
 
         if not scored:
-            return RecommendResult([], 0.0, 0.0, [])
+            return RecommendResult([], 0.0, 0.0, [], [])
 
         scored.sort(key=lambda row: (row[0], len(row[1])), reverse=True)
         pool = scored
@@ -237,8 +267,10 @@ class Recommender:
             if row[0] == best_score and len(row[1]) == best_len
         ]
         _, best_outfit = self._pick_outfit(top_candidates)
-        color_score, color_reasons = self.rule_engine.score_colors(best_outfit)
-        reasons = self._reasons(best_outfit, season, weather, style, style_relaxed, color_reasons)
+        color_score, color_reasons, color_codes = self.rule_engine.score_colors(best_outfit)
+        reasons, reason_codes = self._reasons(
+            best_outfit, season, weather, style, style_relaxed, color_reasons, color_codes, repeated,
+        )
 
         outfit_items = [
             OutfitItem(
@@ -253,4 +285,4 @@ class Recommender:
             )
             for item in best_outfit
         ]
-        return RecommendResult(outfit_items, color_score, color_score, reasons)
+        return RecommendResult(outfit_items, color_score, color_score, reasons, reason_codes)

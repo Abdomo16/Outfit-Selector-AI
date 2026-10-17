@@ -218,3 +218,51 @@ def test_string_ids_round_trip():
     ]
     result = recommender.recommend(wardrobe, occasion="everyday", lock_ids=["top-1"])
     assert {item.id for item in result.outfit} == {"top-1", "bottom-1"}
+
+
+def test_exclude_ids_drops_a_piece_when_another_exists():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "blouse", "white"),
+        _item(3, "jeans", "navy"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="everyday", exclude_ids=[1])
+    assert 1 not in {item.id for item in result.outfit}
+    assert 2 in {item.id for item in result.outfit}
+
+
+def test_exclude_ids_retries_when_it_is_the_only_choice():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "jeans", "navy"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="everyday", exclude_ids=[1])
+    assert 1 in {item.id for item in result.outfit}
+    assert any(code.code == "repeated_piece" for code in result.reason_codes)
+
+
+def test_locked_id_is_not_excluded():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "blouse", "white"),
+        _item(3, "jeans", "navy"),
+    ]
+    result = recommender.recommend(
+        wardrobe, occasion="everyday", lock_ids=[1], exclude_ids=[1],
+    )
+    assert 1 in {item.id for item in result.outfit}
+
+
+def test_reason_codes_travel_with_the_english_sentences():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    result = recommender.recommend(
+        [_item(1, "blouse", "white"), _item(2, "trousers", "navy")],
+        occasion="everyday",
+        weather="mild",
+    )
+    pair = next(code for code in result.reason_codes if code.code == "color_pair")
+    assert pair.colors == ["white", "navy"]
+    assert any(code.code == "weather" for code in result.reason_codes)

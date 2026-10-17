@@ -120,7 +120,7 @@ class RuleEngine:
 
         return True
 
-    def score_colors(self, items: List[WardrobeItemFull]) -> tuple[float, list[str]]:
+    def score_colors(self, items: List[WardrobeItemFull]) -> tuple[float, list[str], list[tuple[str, list[str]]]]:
         """Average pairwise color compatibility. Unknown colors score 0.5."""
         rules = self.rules.get("color_rules", {})
         if len(items) < 2:
@@ -128,6 +128,7 @@ class RuleEngine:
 
         scores: list[float] = []
         reasons: list[str] = []
+        codes: list[tuple[str, list[str]]] = []
         unknown = False
 
         def allows(rule: list, other: str) -> bool:
@@ -148,10 +149,13 @@ class RuleEngine:
                 if allows(left_rule, right_key) or allows(right_rule, left_key):
                     scores.append(1.0)
                     reasons.append(f"{left} pairs with {right}.")
+                    codes.append(("color_pair", [left, right]))
                 else:
                     scores.append(0.0)
                     reasons.append(f"{left} clashes with {right}.")
+                    codes.append(("color_clash", [left, right]))
 
         if unknown:
             reasons.append("Some colors have no rule, so they stay neutral.")
-        return sum(scores) / len(scores), reasons
+            codes.append(("color_neutral", []))
+        return sum(scores) / len(scores), reasons, codes
