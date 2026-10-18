@@ -1,94 +1,75 @@
+import numpy as np
 from PIL import Image, ImageOps
 
-from models.classifier.classifier import ClothingClassifier
+from models import colors, taxonomy
+from models.color_detector.background import load_background_remover
 from models.color_detector.color_detector import ColorDetector
 from models.segmentation.segmenter import Segmenter
-from models.attribute_extractor.attribute_extractor import AttributeExtractor
+from models.attribute_extractor.attribute_extractor import FashionEncoder
 
-# DeepFashion2 class → app taxonomy (23 classes).
-# None = no equivalent app class; classification falls back to CLIP.
-DF2_TYPE_MAP = {
-    "short_sleeved_shirt": "Tshirts",
-    "long_sleeved_shirt": "Shirts",
-    "short_sleeved_outwear": None,
-    "long_sleeved_outwear": None,
-    "vest": None,
-    "sling": "Tops",
-    "shorts": "Shorts",
-    "trousers": "Trousers",
-    "skirt": None,
-    "short_sleeved_dress": None,
-    "long_sleeved_dress": None,
-    "vest_dress": None,
-    "sling_dress": None,
-}
+
+def _photo_mask(seg: dict, width: int, height: int):
+    """A segment's mask in photo coordinates, or None."""
+    mask = seg.get("mask")
+    if mask is None:
+        return None
+    m = np.asarray(mask) > 127
+    if m.shape == (height, width):
+        return m
+    x1, y1, x2, y2 = seg["box"]
+    if m.shape != (y2 - y1, x2 - x1):
+        return None
+    full = np.zeros((height, width), dtype=bool)
+    full[y1:y2, x1:x2] = m
+    return full
+
+
+def read_item_color(color_detector, encoder, image: Image.Image, item: dict,
+                    det_mask=None, exclude_mask=None) -> dict:
+    """
+    Measure the garment's own pixels, then let the fashion model name the
+    color when the measurement agrees with it. item needs type, pattern and
+    embedding from the encoder.
+    """
+    read = color_detector.read(
+        image, det_mask, exclude_mask, patterned=item.get("pattern") not in (None, "Plain"),
+    )
+    scores = encoder.color_scores(item["embedding"], item["type"])
+    name = colors.choose_name(read["color"], read["lab"], scores)
+    secondary = read["secondary_color"]
+    if secondary == name:
+        secondary = None
+    return {
+        "color": name,
+        "hex": read["hex"],
+        "secondary_color": secondary,
+        "secondary_hex": read["secondary_hex"] if secondary else None,
+    }
 
 
 class InferencePipeline:
     def __init__(self):
         self.segmenter = Segmenter()
-        self.classifier = ClothingClassifier()
-        self.color_detector = ColorDetector()
-        self.attribute_extractor = AttributeExtractor()
+        self.color_detector = ColorDetector(background_remover=load_background_remover())
+        self.encoder = FashionEncoder()
 
-    def _classify_crop(self, image: Image.Image, seg_label: str, seg_conf: float) -> dict:
+    def _classify_crop(self, image: Image.Image, seg_label: str) -> dict:
         """
-        Classify one segmented crop.
+        Classify one crop with the fashion encoder.
 
-        The DeepFashion2 segmenter already knows the garment category (trained
-        on 491K fashion images), so its label is the most reliable signal for
-        clothing. keras/CLIP only handle accessories (no detection) and the
-        DF2 categories the app taxonomy doesn't have (outerwear, dresses...).
+        The detector label favours its categories, so a DeepFashion2
+        "trousers" box leans towards bottoms and a YOLOE "sneaker" box towards
+        shoes. No label means every type starts equal.
         """
-        mapped = DF2_TYPE_MAP.get(seg_label)
+        return self.encoder.predict(image, taxonomy.hint_for_label(seg_label))
 
-        if mapped is not None:
-            item_type = mapped
-            # Refine generic trousers/shorts into jeans/chinos/leggings etc.
-            # only when CLIP is reasonably confident — otherwise keep the
-            # reliable segmenter label.
-            if mapped in ("Trousers", "Shorts"):
-                refined, ref_conf = self.attribute_extractor.get_pants_type(image)
-                if ref_conf >= 0.5 and refined in ("jeans", "chinos", "leggings"):
-                    item_type = refined.capitalize()
-            return {"type": item_type, "confidence": round(seg_conf, 4)}
+    def _color(self, image: Image.Image, item: dict, det_mask=None, exclude_mask=None) -> dict:
+        return read_item_color(self.color_detector, self.encoder, image, item, det_mask, exclude_mask)
 
-        if seg_label:  # detected clothing with no mapped app class (dress, vest...)
-            clip_type, clip_conf = self.attribute_extractor.classify_type(image)
-            return {"type": clip_type, "confidence": round(clip_conf, 4)}
-
-        # No segmentation detection (accessories, single items) → keras path.
-        class_res = self.classifier.predict(image)
-        if class_res["confidence"] < 0.5:
-            clip_type, clip_conf = self.attribute_extractor.classify_type(image)
-            if clip_conf > class_res["confidence"]:
-                class_res = {"type": clip_type, "confidence": round(clip_conf, 4)}
-
-        item_type = class_res["type"]
-        if item_type in ("trousers", "shorts"):
-            refined, ref_conf = self.attribute_extractor.get_pants_type(image)
-            if ref_conf >= 0.5 and refined in ("jeans", "chinos", "leggings"):
-                item_type = refined.capitalize()
-                class_res = {"type": item_type, "confidence": round(ref_conf, 4)}
-        return class_res
-
-    def process_single_item(self, image: Image.Image, seg_label: str = "", seg_conf: float = 0.0, seg_mask=None) -> dict:
-        """Run classification + color + attributes on a single cropped item."""
-        class_res = self._classify_crop(image, seg_label, seg_conf)
-
-        color_res = self.color_detector.predict(image, mask=seg_mask)
-        attr_res = self.attribute_extractor.predict(image)
-
-        return {
-            "type":       class_res["type"],
-            "confidence": class_res["confidence"],
-            "color":      color_res["color"],
-            "hex":        color_res["hex"],
-            "pattern":    attr_res["pattern"],
-            "style":      attr_res["style"],
-            "occasion":   attr_res["occasion"],
-            "season":     attr_res["season"]
-        }
+    def process_single_item(self, image: Image.Image, seg_label: str = "", seg_mask=None) -> dict:
+        """Classification, color and attributes for one already-cropped item."""
+        result = self._classify_crop(image, seg_label)
+        return {**result, **self._color(image, result, det_mask=seg_mask)}
 
     def process_upload(self, image: Image.Image) -> dict:
         """
@@ -97,130 +78,35 @@ class InferencePipeline:
         # 1. Normalise the photo once (EXIF rotation) — segmenter does the
         #    same internally, so segment boxes map onto this image.
         source = ImageOps.exif_transpose(image).convert("RGB")
+        width, height = source.size
 
-        # 2. Segment the photo into individual clothing article crops
-        #    (masked background removal happens inside).
-        #    Each entry: {"crop", "label", "conf", "mask", "box"} where box
-        #    is in `source` coordinates.
+        # 2. Segment the photo into individual items. Each entry has
+        #    {"crop", "label", "conf", "mask", "box"}, box in `source` pixels.
         segments = self.segmenter.segment(source)
+        photo_masks = [_photo_mask(seg, width, height) for seg in segments]
 
-        # 3. Classify each item and read its color from the BOX region of the
-        #    original photo. Overlay debugging showed the DF2 masks can land
-        #    on the wrong fabric when garments occlude each other, while the
-        #    boxes track the visible garment region reliably.
-        results = []
-        for seg in segments:
-            crop = seg["crop"]
-            label = seg["label"] or ""
-            conf = seg["conf"]
-            box = seg["box"]
-
-            class_res = self._classify_crop(crop, label, conf)
-            attr_res = self.attribute_extractor.predict(crop)
-
-            band = (0.4, 1.0) if label in ("trousers", "shorts", "skirt") else None
-            box_crop = source.crop(box)
-            ranked = self.color_detector.predict_ranked(box_crop, mask=None, row_band=band)
-
-            results.append({
-                "crop": crop,
-                **class_res,
-                "ranked_colors": ranked,
-                "pattern": attr_res["pattern"],
-                "style": attr_res["style"],
-                "occasion": attr_res["occasion"],
-                "season": attr_res["season"],
-            })
-
-        # 4. Occlusion-aware re-read for lower-body garments: a long top
-        #    hanging over trousers leaks its own fabric color into the
-        #    trousers' box read. Re-read the bottom band of the box while
-        #    excluding the overlapping item's fabric colors, with the tighter
-        #    background filter (real-photo backgrounds aren't pure white).
-        lower_body = ("trousers", "shorts", "skirt")
-
-        def _hex_rgb(h):
-            h = h.lstrip("#")
-            return tuple(int(h[j:j + 2], 16) for j in (0, 2, 4))
-
-        def _boxes_overlap(a, b):
-            ox = max(0, min(a[2], b[2]) - max(a[0], b[0]))
-            oy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
-            return ox * oy > 0
-
-        for i, seg in enumerate(segments):
-            label = seg["label"] or ""
-            if label not in lower_body:
-                continue
-            box = seg["box"]
-            exclude_rgbs = []
-            for j, other in enumerate(segments):
-                if j == i or not (other["label"] or ""):
-                    continue
-                if not _boxes_overlap(box, other["box"]):
-                    continue
-                exclude_rgbs.extend(
-                    _hex_rgb(c["hex"])
-                    for c in results[j]["ranked_colors"] if c["share"] >= 0.15
-                )
-            if not exclude_rgbs:
-                continue
-            box_crop = source.crop(box)
-            results[i]["ranked_colors"] = self.color_detector.predict_ranked(
-                box_crop, mask=None, row_band=(0.7, 1.0),
-                exclude_rgbs=exclude_rgbs, strict_bg=True, k=8,
-            )
-
-        # 5. Cross-item color dedup: garments in the same photo are usually
-        #    different colors. When an item's dominant cluster was already
-        #    claimed by an earlier item (e.g. a shirt hanging over trousers
-        #    leaks into the trousers mask), fall back to the item's runner-up
-        #    cluster — choosing the candidate most dissimilar to the claimed
-        #    colors (a warm-lit background gap often shares the claimed color's
-        #    hue, so hue-similar fallbacks are avoided). Items are assigned
-        #    most-certain-first (highest dominant-cluster share).
-        order = sorted(
-            range(len(results)),
-            key=lambda i: results[i]["ranked_colors"][0]["share"],
-            reverse=True,
-        )
-        claimed = set()          # claimed color names
-        claimed_rgbs = []        # claimed color RGB values
-        picks = {}
-        for i in order:
-            ranked = [
-                c for c in results[i]["ranked_colors"] if c["share"] >= 0.15
-            ] or results[i]["ranked_colors"]
-
-            top = ranked[0]
-            if top["color"] not in claimed:
-                pick = top
-            else:
-                pick = max(
-                    ranked,
-                    key=lambda c: min(
-                        sum((a - b) ** 2 for a, b in zip(_hex_rgb(c["hex"]), cr))
-                        for cr in claimed_rgbs
-                    ),
-                )
-            claimed.add(pick["color"])
-            claimed_rgbs.append(_hex_rgb(pick["hex"]))
-            picks[i] = pick
-
+        # 3. Classify each crop, then read its color from the original photo
+        #    (crops have a whitened background) with the other items' pixels
+        #    removed, so a top hanging over trousers does not tint them.
         items = []
-        for i, res in enumerate(results):
-            pick = picks[i]
+        for i, seg in enumerate(segments):
+            result = self._classify_crop(seg["crop"], seg["label"] or "")
+
+            others = [m for j, m in enumerate(photo_masks) if j != i and m is not None]
+            exclude = np.logical_or.reduce(others) if others else None
+            if seg["crop"].size == source.size:
+                color_image, det_mask = source, photo_masks[i]
+            else:
+                x1, y1, x2, y2 = seg["box"]
+                color_image = source.crop(seg["box"])
+                det_mask = photo_masks[i][y1:y2, x1:x2] if photo_masks[i] is not None else None
+                exclude = exclude[y1:y2, x1:x2] if exclude is not None else None
+
             items.append({
-                "crop":       res["crop"],
-                "type":       res["type"],
-                "confidence": res["confidence"],
-                "color":      pick["color"],
-                "hex":        pick["hex"],
-                "pattern":    res["pattern"],
-                "style":      res["style"],
-                "occasion":   res["occasion"],
-                "season":     res["season"],
+                "crop": seg["crop"],
+                "partial": seg.get("partial"),
+                **result,
+                **self._color(color_image, result, det_mask, exclude),
             })
 
-        # Return the items in an array
         return {"items": items}

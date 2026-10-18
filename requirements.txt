@@ -9,7 +9,8 @@ scikit-learn
 Pillow
 numpy
 python-multipart
-tensorflow
+rembg
+onnxruntime
 python-dotenv
 pytest
 requests

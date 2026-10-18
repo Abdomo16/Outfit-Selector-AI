@@ -2,19 +2,23 @@ from typing import List, NamedTuple, Optional, Sequence, Tuple, Union
 import random
 
 from api.schemas import OutfitItem, ReasonCode, WardrobeItemFull
+from models.taxonomy import category_for_type
 from models.recommender.rule_engine import RuleEngine, is_sport_item, normalise_label, normalise_type
 
 TOPS = {
     "t_shirt", "hoodie", "dress_shirt", "blouse", "wool_sweater", "polo",
-    "tank_top", "shirt", "top", "sweater", "jersey",
+    "tank_top", "shirt", "top", "sweater", "jersey", "sweatshirt", "cardigan",
 }
 BOTTOMS = {"jeans", "trousers", "chinos", "shorts", "skirt", "leggings", "joggers"}
 SHOES = {
     "sneakers", "oxford_shoes", "flip_flops", "loafers", "shoes", "heels",
     "boots", "sandals", "shoe", "boot", "sneaker", "sandal", "flats",
 }
-OUTERWEAR = {"blazer", "suit", "heavy_coat", "outerwear", "outwear", "jacket", "coat"}
-ONE_PIECE = {"dress", "tracksuit", "tuxedo", "pyjama", "kurta"}
+OUTERWEAR = {
+    "blazer", "suit", "heavy_coat", "outerwear", "outwear", "jacket", "coat",
+    "denim_jacket", "leather_jacket", "vest",
+}
+ONE_PIECE = {"dress", "tracksuit", "tuxedo", "pyjama", "kurta", "jumpsuit"}
 ZONES = {
     "top": TOPS,
     "bottom": BOTTOMS,
@@ -276,6 +280,7 @@ class Recommender:
             OutfitItem(
                 id=item.id,
                 category=item.type,
+                wardrobeCategory=item.category or category_for_type(item.type),
                 color=item.color,
                 confidence=item.confidence,
                 style=item.style,

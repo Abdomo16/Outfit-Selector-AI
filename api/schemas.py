@@ -17,10 +17,13 @@ class WardrobeItemBasic(BaseModel):
 
 class WardrobeItemFull(BaseModel):
     id:          Optional[Union[int, str]] = None
+    category:    Optional[str] = None   # wardrobe tab, e.g. "Outerwear"
     type:        str
     confidence:  float
     color:       str
     hex:         str
+    secondary_color: Optional[str] = None  # second fabric color of patterned items
+    secondary_hex:   Optional[str] = None
     pattern:     Optional[str] = None
     style:       Optional[str] = None
     occasion:    Optional[str] = None   # CLIP-predicted item occasion, e.g. "Gym", "Work"
@@ -31,6 +34,24 @@ class WardrobeItemFull(BaseModel):
 
 class UploadResponse(BaseModel):
     items: List[WardrobeItemFull]
+
+
+class DeleteItemsRequest(BaseModel):
+    ids: List[Union[int, str]]
+
+
+class PendingItem(BaseModel):
+    """An item held back from the wardrobe until the user keeps it."""
+    id:             str
+    reason:         str             # "cut_off" or "hidden"
+    type:           str
+    category:       Optional[str] = None
+    color:          str
+    preview_base64: Optional[str] = None
+
+
+class KeepItemsRequest(BaseModel):
+    ids: List[str]
 
 
 #  Phase 5: Recommend 
@@ -53,7 +74,8 @@ class ReasonCode(BaseModel):
 
 class OutfitItem(BaseModel):
     id:         Union[int, str, None] = None
-    category:   str
+    category:   str                     # the item's detailed type, e.g. "jeans"
+    wardrobeCategory: Optional[str] = None  # its wardrobe tab, e.g. "Bottoms"
     color:      str
     confidence: Optional[float] = None
     style:      Optional[str] = None
