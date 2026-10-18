@@ -1,140 +1,220 @@
+import os
+
 import torch
-from transformers import CLIPProcessor, CLIPModel
+import torch.nn.functional as F
 from PIL import Image
+from transformers import AutoModel, AutoProcessor
 
-class AttributeExtractor:
-    def __init__(self):
-        print("[AttributeExtractor] Loading OpenAI CLIP Model (this might take a moment on first run)...")
+from models import colors, taxonomy
+
+DEFAULT_MODEL_ID = "srpone/zooclaw-fashionsiglip2"
+FALLBACK_MODEL_ID = "Marqo/marqo-fashionSigLIP"
+# SigLIP text towers are trained on fixed-length padded prompts.
+TEXT_MAX_LENGTH = 64
+# How much more likely a type is when the detector's label points to its category.
+HINT_BOOST = 4.0
+
+STYLE_PROMPTS = {
+    "Streetwear": ["streetwear style clothing", "urban street fashion"],
+    "Elegant": ["elegant formal clothing", "classy dressy fashion"],
+    "Minimal": ["minimalist clothing", "simple clean basic fashion"],
+    "Vintage": ["vintage retro clothing", "old-fashioned classic fashion"],
+    "Sport": ["sportswear athletic clothing", "activewear for training"],
+}
+OCCASION_PROMPTS = {
+    "University": ["casual clothing for university classes", "a student campus outfit"],
+    "Work": ["office work attire", "business professional clothing"],
+    "Date Night": ["an outfit for a date night", "a stylish evening dinner outfit"],
+    "Gym": ["gym workout clothing", "clothing for exercise"],
+    "Party": ["party clothing", "a going-out night party outfit"],
+    "Travel": ["comfortable travel clothing", "an outfit for a trip"],
+}
+SEASON_PROMPTS = {
+    "Summer": ["light summer clothing", "clothing for hot weather"],
+    "Winter": ["warm winter clothing", "clothing for cold weather"],
+    "Spring": ["light spring clothing", "clothing for mild spring weather"],
+    "Autumn": ["autumn fall clothing", "layered clothing for cool weather"],
+}
+PATTERN_PROMPTS = {
+    "Plain": ["a plain solid color item", "a single color item with no pattern"],
+    "Striped": ["a striped item", "an item with stripes"],
+    "Plaid": ["a plaid checked item", "a tartan check pattern"],
+    "Floral": ["a floral print item", "an item with flowers printed on it"],
+    "Polka Dot": ["a polka dot item", "an item with dots"],
+    "Graphic Print": ["an item with a graphic print or logo", "a printed graphic design"],
+    "Animal Print": ["a leopard or zebra animal print item", "an animal print pattern"],
+    "Camouflage": ["a camouflage print item", "a military camo pattern"],
+}
+
+
+def _as_tensor(output) -> torch.Tensor:
+    """get_*_features returns a tensor or a model output depending on version."""
+    if isinstance(output, torch.Tensor):
+        return output
+    for name in ("image_embeds", "text_embeds", "pooler_output"):
+        value = getattr(output, name, None)
+        if value is not None:
+            return value
+    raise TypeError(f"Unexpected feature output: {type(output).__name__}")
+
+
+class _TransformersBackend:
+    def __init__(self, model_id: str, device: str):
+        self.device = device
+        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.model = AutoModel.from_pretrained(model_id).to(device).eval()
+        scale = getattr(self.model, "logit_scale", None)
+        self.logit_scale = float(scale.detach().exp()) if scale is not None else 100.0
+
+    def text(self, texts: list) -> torch.Tensor:
+        inputs = self.processor(
+            text=texts,
+            padding="max_length",
+            max_length=TEXT_MAX_LENGTH,
+            truncation=True,
+            return_tensors="pt",
+        ).to(self.device)
+        return _as_tensor(self.model.get_text_features(**inputs))
+
+    def image(self, image: Image.Image) -> torch.Tensor:
+        inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+        return _as_tensor(self.model.get_image_features(pixel_values=inputs["pixel_values"]))
+
+
+class _OpenClipBackend:
+    """Marqo models. Their Transformers wrapper does not load on Transformers 5."""
+
+    def __init__(self, model_id: str, device: str):
+        import open_clip
+
+        self.device = device
+        name = f"hf-hub:{model_id}"
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(name)
+        self.tokenizer = open_clip.get_tokenizer(name)
+        self.model.to(device).eval()
+        self.logit_scale = float(self.model.logit_scale.detach().exp())
+
+    def text(self, texts: list) -> torch.Tensor:
+        return self.model.encode_text(self.tokenizer(texts).to(self.device))
+
+    def image(self, image: Image.Image) -> torch.Tensor:
+        return self.model.encode_image(self.preprocess(image).unsqueeze(0).to(self.device))
+
+
+class FashionEncoder:
+    """
+    Zero-shot fashion classifier on a fashion-tuned SigLIP model.
+
+    Every prompt is encoded once at startup. Each crop is encoded once and
+    compared against the type, style, occasion, season and pattern prompts.
+    """
+
+    def __init__(self, model_id: str | None = None):
+        self.model_id = model_id or os.environ.get("FASHION_MODEL_ID", DEFAULT_MODEL_ID)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model_id = "openai/clip-vit-base-patch32"
-        # Download and cache the weights
-        self.processor = CLIPProcessor.from_pretrained(self.model_id)
-        self.model = CLIPModel.from_pretrained(self.model_id).to(self.device)
-        print(f"[AttributeExtractor] CLIP loaded successfully onto {self.device}!")
-        
-        # 1. Styles exactly matching Flutter App
-        self.styles = ["Streetwear", "Elegant", "Minimal", "Vintage", "Sport"]
-        self.style_prompts = [f"a photo of {s.lower()} fashion clothing" for s in self.styles]
-        
-        # 2. Occasions exactly matching Flutter App
-        self.occasions = ["University", "Work", "Date Night", "Gym", "Party", "Travel"]
-        self.occasion_prompts = [f"a photo of clothing suited for {o.lower()}" for o in self.occasions]
-        
-        # 3. Basic Patterns
-        self.patterns = ["Plain", "Striped", "Floral", "Plaid"]
-        self.pattern_prompts = [f"a photo of {p.lower()} patterned clothing" for p in self.patterns]
+        print(f"[FashionEncoder] Loading {self.model_id} on {self.device}...")
+        backend = _OpenClipBackend if self.model_id.startswith("Marqo/") else _TransformersBackend
+        self.backend = backend(self.model_id, self.device)
+        self.logit_scale = self.backend.logit_scale
 
-        # 4. Seasons / Weather (Summer, Winter, etc.)
-        self.seasons = ["Summer", "Winter", "Spring", "Autumn"]
-        self.season_prompts = [f"a photo of clothing suited for {s.lower()} weather" for s in self.seasons]
+        self.type_names = taxonomy.all_types()
+        type_prompts = {
+            name: phrasings
+            for types in taxonomy.TYPES.values()
+            for name, phrasings in types.items()
+        }
+        self.type_embeds = self._encode_groups(type_prompts, self.type_names)
+        self.styles, self.style_embeds = self._encode_named(STYLE_PROMPTS)
+        self.occasions, self.occasion_embeds = self._encode_named(OCCASION_PROMPTS)
+        self.seasons, self.season_embeds = self._encode_named(SEASON_PROMPTS)
+        self.patterns, self.pattern_embeds = self._encode_named(PATTERN_PROMPTS)
+        self._color_embeds = {}
+        print(f"[FashionEncoder] Ready with {len(self.type_names)} types.")
 
-        # 5. Pants Types
-        self.pants_types = ["jeans", "trousers", "chinos", "tracksuit", "leggings", "shorts"]
-        self.pants_prompts = [
-            "a photo of denim jeans",
-            "a photo of formal trousers pants",
-            "a photo of casual chinos pants",
-            "a photo of a sports tracksuit bottoms sweatpants",
-            "a photo of tight athletic leggings",
-            "a photo of shorts"
-        ]
+    @torch.no_grad()
+    def _encode_text(self, texts: list) -> torch.Tensor:
+        chunks = []
+        for start in range(0, len(texts), 32):
+            features = self.backend.text(texts[start:start + 32])
+            chunks.append(F.normalize(features.float(), dim=-1))
+        return torch.cat(chunks)
 
-        # 6. Garment types — mirrors the keras classifier's 23 classes.
-        #    Used as a zero-shot fallback when the keras classifier is unsure.
-        self.garment_types = [
-            "Backpacks", "Belts", "Briefs", "Casual Shoes", "Flats",
-            "Flip Flops", "Formal Shoes", "Handbags", "Heels", "Jeans",
-            "Kurtas", "Perfume and Body Mist", "Sandals", "Shirts",
-            "Shorts", "Socks", "Sports Shoes", "Sunglasses", "Tops",
-            "Trousers", "Tshirts", "Wallets", "Watches"
-        ]
-        self.garment_prompts = [
-            "a photo of a backpack",
-            "a photo of a belt",
-            "a photo of underwear briefs",
-            "a photo of casual shoes sneakers",
-            "a photo of women's flat shoes",
-            "a photo of flip flop sandals",
-            "a photo of formal leather dress shoes",
-            "a photo of a woman's handbag purse",
-            "a photo of women's high heel shoes",
-            "a photo of denim jeans pants",
-            "a photo of a traditional kurta",
-            "a photo of a perfume bottle",
-            "a photo of sandals",
-            "a photo of a button-up collared shirt",
-            "a photo of shorts pants",
-            "a photo of socks",
-            "a photo of athletic sports running shoes",
-            "a photo of sunglasses",
-            "a photo of a woman's casual top blouse",
-            "a photo of formal trousers pants",
-            "a photo of a t-shirt",
-            "a photo of a wallet",
-            "a photo of a wrist watch"
-        ]
+    def _encode_groups(self, prompts: dict, names: list) -> torch.Tensor:
+        """One embedding per name, averaged over its phrasings."""
+        flat = [p for name in names for p in prompts[name]]
+        embeds = self._encode_text(flat)
+        rows, offset = [], 0
+        for name in names:
+            count = len(prompts[name])
+            rows.append(embeds[offset:offset + count].mean(dim=0))
+            offset += count
+        return F.normalize(torch.stack(rows), dim=-1)
 
-    def _get_best_match(self, image: Image.Image, choices: list, prompts: list) -> str:
-        # Pass the image and text prompts to the model
-        inputs = self.processor(text=prompts, images=image, return_tensors="pt", padding=True).to(self.device)
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            logits_per_image = outputs.logits_per_image
-            probs = logits_per_image.softmax(dim=1)
-            best_idx = probs.argmax().item()
-        
-        return choices[best_idx]
+    def _encode_named(self, prompts: dict) -> tuple:
+        names = list(prompts)
+        return names, self._encode_groups(prompts, names)
 
-    def predict(self, image: Image.Image) -> dict:
+    @torch.no_grad()
+    def encode_image(self, image: Image.Image) -> torch.Tensor:
+        features = self.backend.image(image.convert("RGB"))
+        return F.normalize(features.float(), dim=-1)[0]
+
+    def _rank(self, image_embed: torch.Tensor, text_embeds: torch.Tensor) -> torch.Tensor:
+        return (self.logit_scale * text_embeds @ image_embed).softmax(dim=0)
+
+    def classify(self, image_embed: torch.Tensor, hint: tuple = ()) -> tuple:
         """
-        Use Zero-Shot CLIP classification to extract stylistic attributes.
+        Pick the best type, favouring the hinted categories when given.
+
+        The hint is a prior, not a filter: detectors sometimes label a
+        neighbouring garment, and a clear image match should still win.
+        Returns (category, type, confidence).
         """
-        # We ensure it's RGB
-        img = image.convert("RGB")
-        
-        style = self._get_best_match(img, self.styles, self.style_prompts)
-        occasion = self._get_best_match(img, self.occasions, self.occasion_prompts)
-        pattern = self._get_best_match(img, self.patterns, self.pattern_prompts)
-        season = self._get_best_match(img, self.seasons, self.season_prompts)
-        
+        probs = self._rank(image_embed, self.type_embeds)
+        if hint:
+            allowed = {t for category in hint for t in taxonomy.types_for_category(category)}
+            weights = torch.tensor(
+                [HINT_BOOST if t in allowed else 1.0 for t in self.type_names],
+                device=probs.device,
+            )
+            probs = probs * weights
+            probs = probs / probs.sum()
+        best = int(probs.argmax())
+        type_name = self.type_names[best]
+        return taxonomy.category_for_type(type_name), type_name, float(probs[best])
+
+    def _best(self, image_embed: torch.Tensor, names: list, embeds: torch.Tensor) -> str:
+        return names[int(self._rank(image_embed, embeds).argmax())]
+
+    def attributes(self, image_embed: torch.Tensor) -> dict:
         return {
-            "pattern": pattern,
-            "style": style,
-            "occasion": occasion,
-            "season": season
+            "pattern": self._best(image_embed, self.patterns, self.pattern_embeds),
+            "style": self._best(image_embed, self.styles, self.style_embeds),
+            "occasion": self._best(image_embed, self.occasions, self.occasion_embeds),
+            "season": self._best(image_embed, self.seasons, self.season_embeds),
         }
 
-    def get_pants_type(self, image: Image.Image) -> tuple:
+    def color_scores(self, image_embed, type_name: str) -> list:
         """
-        Refines a generic 'trousers' or 'jeans' type down to exactly what it is.
-        Returns (type, confidence).
+        [(color, probability)] for prompts like "a light grey t-shirt",
+        best first. Prompts are encoded once per type.
         """
-        img = image.convert("RGB")
-        inputs = self.processor(
-            text=self.pants_prompts, images=img,
-            return_tensors="pt", padding=True
-        ).to(self.device)
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            probs = outputs.logits_per_image.softmax(dim=1)[0]
-        best_idx = probs.argmax().item()
-        return self.pants_types[best_idx], float(probs[best_idx])
+        if type_name not in self._color_embeds:
+            self._color_embeds[type_name] = self._encode_text(
+                [f"a {color} {type_name}" for color in colors.COLOR_NAMES]
+            )
+        embed = torch.as_tensor(image_embed, dtype=torch.float32, device=self.device)
+        probs = self._rank(embed, self._color_embeds[type_name])
+        return sorted(zip(colors.COLOR_NAMES, probs.tolist()), key=lambda c: c[1], reverse=True)
 
-    def classify_type(self, image: Image.Image) -> tuple:
-        """
-        Zero-shot garment-type classification over the same 23 classes as the
-        keras classifier. Returns (type, confidence).
-
-        Used as a fallback when the keras classifier's confidence is too low
-        to trust — CLIP generalises much better to real-world photos.
-        """
-        img = image.convert("RGB")
-        inputs = self.processor(
-            text=self.garment_prompts, images=img,
-            return_tensors="pt", padding=True
-        ).to(self.device)
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            probs = outputs.logits_per_image.softmax(dim=1)[0]
-        best_idx = probs.argmax().item()
-        return self.garment_types[best_idx].lower(), float(probs[best_idx])
+    def predict(self, image: Image.Image, hint: tuple = ()) -> dict:
+        """Type, category, attributes and the image embedding for one crop."""
+        embed = self.encode_image(image)
+        category, type_name, confidence = self.classify(embed, hint)
+        return {
+            "category": category,
+            "type": type_name,
+            "confidence": round(confidence, 4),
+            **self.attributes(embed),
+            "embedding": embed.cpu().tolist(),
+        }

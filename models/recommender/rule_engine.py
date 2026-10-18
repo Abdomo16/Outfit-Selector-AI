@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import List
 from api.schemas import WardrobeItemFull
+from models.colors import family as color_family
 
 
 # The classifier labels contain spaces and plurals (for example ``Sports Shoes``
@@ -24,6 +25,7 @@ TYPE_ALIASES = {
     "sports_shoes": "sneakers",
     "formal_shoes": "oxford_shoes",
     "flip_flop": "flip_flops",
+    "puffer_jacket": "heavy_coat",
 }
 
 
@@ -138,8 +140,8 @@ class RuleEngine:
             for j in range(i + 1, len(items)):
                 left = items[i].color or ""
                 right = items[j].color or ""
-                left_key = left.lower().strip()
-                right_key = right.lower().strip()
+                left_key = color_family(left)
+                right_key = color_family(right)
                 left_rule = rules.get(left_key)
                 right_rule = rules.get(right_key)
                 if left_rule is None or right_rule is None:

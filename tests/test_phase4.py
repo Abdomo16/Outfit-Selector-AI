@@ -7,7 +7,7 @@ import json
 # Ensure we can import from the root directory
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.attribute_extractor.attribute_extractor import AttributeExtractor
+from models.attribute_extractor.attribute_extractor import FashionEncoder
 
 def test_phase4():
     sample_img_path = "sample_test.jpg"
@@ -15,14 +15,15 @@ def test_phase4():
         print(f"Cannot find {sample_img_path}")
         return
 
-    print("Initializing CLIP Attribute Extractor...")
-    extractor = AttributeExtractor()
+    print("Initializing fashion encoder...")
+    encoder = FashionEncoder()
     
     print(f"Loading image {sample_img_path}...")
     img = Image.open(sample_img_path).convert("RGB")
     
     print("Running Zero-Shot Prediction...")
-    result = extractor.predict(img)
+    result = encoder.predict(img)
+    result.pop("embedding")
     
     print("\n--- Extracted Attributes ---")
     print(json.dumps(result, indent=2))
