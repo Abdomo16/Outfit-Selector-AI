@@ -30,6 +30,7 @@ class WardrobeItemFull(BaseModel):
     season:      Optional[str] = None
     embedding:   Optional[List[float]] = None
     image_path:  Optional[str] = None
+    cutout_path: Optional[str] = None
 
 
 class UploadResponse(BaseModel):

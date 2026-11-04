@@ -88,6 +88,38 @@ def _upload_crop(image: Image.Image, item_id: str) -> str:
     raise RuntimeError(f"Storage upload failed: {last_error}")
 
 
+def _upload_cutout(image: Image.Image, item_id: str) -> str | None:
+    """Upload a transparent-background RGBA PNG and return its public URL."""
+    _ensure_bucket()
+    supabase = get_supabase()
+    buffer = io.BytesIO()
+    image.convert("RGBA").save(buffer, format="PNG", optimize=True)
+    path = f"{item_id}/cutout.png"
+    try:
+        supabase.storage.from_(WARDROBE_BUCKET).upload(
+            path,
+            buffer.getvalue(),
+            file_options={"content-type": "image/png", "contentType": "image/png", "upsert": "true"},
+        )
+        return _public_url(path)
+    except Exception as exc:
+        print(f"[wardrobe] WARNING: cutout upload failed for {item_id}: {exc}")
+        return None
+
+
+def _make_cutout(crop: Image.Image, pipeline) -> Image.Image | None:
+    """Run rembg on a crop using the pipeline's loaded session. Returns RGBA or None."""
+    try:
+        bg = getattr(getattr(pipeline, "color_detector", None), "background_remover", None)
+        if bg is None:
+            return None
+        from rembg import remove as rembg_remove
+        return rembg_remove(crop.convert("RGB"), session=bg.session)
+    except Exception as exc:
+        print(f"[wardrobe] WARNING: cutout generation failed: {exc}")
+        return None
+
+
 def _insert_item(supabase, payload: dict):
     """Insert a wardrobe row. The embedding is optional if the column rejects it."""
     try:
@@ -111,8 +143,11 @@ def _get_job(job_id: str) -> dict | None:
         return dict(job) if job else None
 
 
-def _store_item(supabase, item: dict, crop: Image.Image | None, user_id: str | None) -> dict:
-    """Upload the crop, insert the wardrobe row and return the stored item."""
+def _store_item(
+    supabase, item: dict, crop: Image.Image | None, user_id: str | None,
+    cutout_img: Image.Image | None = None,
+) -> dict:
+    """Upload the crop and optional cutout, insert the wardrobe row."""
     item_id = str(uuid.uuid4())
 
     # Upload crop BEFORE insert so we never persist a row without image_path.
@@ -122,6 +157,10 @@ def _store_item(supabase, item: dict, crop: Image.Image | None, user_id: str | N
             image_url = _upload_crop(crop, item_id)
         except Exception as exc:
             raise RuntimeError(f"Failed to upload crop for item {item_id}: {exc}") from exc
+
+    cutout_url = None
+    if cutout_img is not None:
+        cutout_url = _upload_cutout(cutout_img, item_id)
 
     payload = {
         "id": item_id,
@@ -138,6 +177,7 @@ def _store_item(supabase, item: dict, crop: Image.Image | None, user_id: str | N
         "season": item.get("season"),
         "embedding": item.get("embedding"),
         "image_path": image_url,
+        "cutout_path": cutout_url,
     }
 
     response = _insert_item(supabase, payload)
@@ -161,6 +201,7 @@ def _store_item(supabase, item: dict, crop: Image.Image | None, user_id: str | N
         season=record.get("season"),
         embedding=record.get("embedding"),
         image_path=record.get("image_path") or image_url,
+        cutout_path=record.get("cutout_path") or cutout_url,
     )
     return full.model_dump() if hasattr(full, "model_dump") else full.dict()
 
@@ -217,7 +258,8 @@ def _process_upload_job(job_id: str, contents: bytes, user_id: str | None, pipel
                 continue
 
             try:
-                stored_items.append(_store_item(supabase, item, crop, user_id))
+                cutout_img = _make_cutout(crop, pipeline) if crop is not None else None
+                stored_items.append(_store_item(supabase, item, crop, user_id, cutout_img=cutout_img))
             except Exception as exc:
                 _set_job(job_id, status="failed", error=str(exc))
                 return
@@ -315,14 +357,18 @@ def delete_wardrobe_items(body: DeleteItemsRequest, authorization: str | None = 
 
     supabase = get_supabase()
     rows = (
-        supabase.table("wardrobe_items").select("id,image_path")
+        supabase.table("wardrobe_items").select("id,image_path,cutout_path")
         .in_("id", ids).eq("user_id", user_id).execute().data
         or []
     )
     if not rows:
         return {"deleted": []}
 
-    paths = [p for p in (_storage_path(r.get("image_path")) for r in rows) if p]
+    paths = [
+        p for r in rows
+        for raw in (r.get("image_path"), r.get("cutout_path"))
+        for p in [_storage_path(raw)] if p
+    ]
     if paths:
         try:
             supabase.storage.from_(WARDROBE_BUCKET).remove(paths)
@@ -335,7 +381,7 @@ def delete_wardrobe_items(body: DeleteItemsRequest, authorization: str | None = 
 
 
 @router.post("/jobs/{job_id}/keep")
-def keep_pending_items(job_id: str, body: KeepItemsRequest, authorization: str | None = Header(None)):
+def keep_pending_items(job_id: str, body: KeepItemsRequest, request: Request, authorization: str | None = Header(None)):
     """
     Save the pending items the user kept and drop the rest.
 
@@ -354,12 +400,14 @@ def keep_pending_items(job_id: str, body: KeepItemsRequest, authorization: str |
 
     keep = {str(item_id) for item_id in body.ids}
     supabase = get_supabase()
+    pipeline = request.app.state.pipeline
     stored = []
     for pending_id, (item, crop) in held.items():
         if pending_id not in keep:
             continue
         try:
-            stored.append(_store_item(supabase, item, crop, user_id))
+            cutout_img = _make_cutout(crop, pipeline) if crop is not None else None
+            stored.append(_store_item(supabase, item, crop, user_id, cutout_img=cutout_img))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
     return {"items": stored}
