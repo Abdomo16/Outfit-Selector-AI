@@ -1,3 +1,5 @@
+import random
+
 import pytest
 from fastapi.testclient import TestClient
 from api.main import app
@@ -101,15 +103,104 @@ def test_recommend_endpoint():
     assert len(data["outfit"]) == 2
 
 
-def _item(item_id, item_type, color, style=None):
+def _item(item_id, item_type, color, style=None, category=None):
     return WardrobeItemFull(
         id=item_id,
         type=item_type,
+        category=category,
         confidence=0.9,
         color=color,
         hex="#000000",
         style=style,
     )
+
+
+def test_shoes_are_included_when_the_wardrobe_has_them():
+    random.seed(1)
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "t-shirt", "white"),
+        _item(2, "jeans", "navy"),
+        _item(3, "sneakers", "burgundy"),
+    ]
+    for _ in range(5):
+        ids = {item.id for item in recommender.recommend(wardrobe, occasion="everyday").outfit}
+        assert 3 in ids
+
+
+def test_shoeless_outfit_when_no_shoe_passes_the_rules():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "trousers", "navy"),
+        _item(3, "flip_flops", "black"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="work")
+    assert {item.id for item in result.outfit} == {1, 2}
+
+
+def test_accessory_and_bag_are_added():
+    random.seed(2)
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "t-shirt", "white"),
+        _item(2, "jeans", "navy"),
+        _item(3, "sneakers", "white"),
+        _item(4, "watch", "black"),
+        _item(5, "backpack", "grey"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="everyday")
+    assert {item.id for item in result.outfit} == {1, 2, 3, 4, 5}
+    watch = next(item for item in result.outfit if item.id == 4)
+    assert watch.wardrobeCategory == "Accessories"
+
+
+def test_accessory_uses_category_when_type_is_unknown():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "jeans", "navy"),
+        _item(3, "bracelet", "black", category="Accessories"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="everyday")
+    assert 3 in {item.id for item in result.outfit}
+
+
+def test_clashing_accessory_is_skipped():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "blouse", "burgundy"),
+        _item(2, "trousers", "navy"),
+        _item(3, "scarf", "olive"),
+    ]
+    result = recommender.recommend(wardrobe, occasion="everyday")
+    assert {item.id for item in result.outfit} == {1, 2}
+
+
+def test_dress_only_wardrobe_does_not_crash():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    result = recommender.recommend([_item(1, "dress", "black")], occasion="party")
+    assert [item.id for item in result.outfit] == [1]
+    assert result.color_score == 0.5
+
+
+def test_lock_and_swap_work_on_accessories():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "shirt", "white"),
+        _item(2, "jeans", "navy"),
+        _item(3, "watch", "black"),
+        _item(4, "belt", "brown"),
+    ]
+    locked = recommender.recommend(wardrobe, occasion="everyday", lock_ids=[4])
+    ids = {item.id for item in locked.outfit}
+    assert 4 in ids
+    assert 3 not in ids
+
+    swapped = recommender.recommend(wardrobe, occasion="everyday", lock_ids=[1, 3], swap_id=3)
+    ids = {item.id for item in swapped.outfit}
+    assert 3 not in ids
+    assert {1, 4} <= ids
 
 
 def test_weather_blocks_hot_wool_and_rain_sandals():

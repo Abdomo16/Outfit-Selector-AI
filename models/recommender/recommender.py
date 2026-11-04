@@ -19,13 +19,31 @@ OUTERWEAR = {
     "denim_jacket", "leather_jacket", "vest",
 }
 ONE_PIECE = {"dress", "tracksuit", "tuxedo", "pyjama", "kurta", "jumpsuit"}
+BAGS = {"handbag", "backpack", "crossbody_bag", "tote_bag", "wallet", "bag"}
+ACCESSORIES = {
+    "cap", "hat", "sunglasses", "watch", "belt", "scarf", "tie", "socks",
+    "jewelry", "accessory",
+}
 ZONES = {
     "top": TOPS,
     "bottom": BOTTOMS,
     "shoes": SHOES,
     "outerwear": OUTERWEAR,
     "one_piece": ONE_PIECE,
+    "bag": BAGS,
+    "accessory": ACCESSORIES,
 }
+CATEGORY_ZONES = {
+    "tops": "top",
+    "bottoms": "bottom",
+    "shoes": "shoes",
+    "outerwear": "outerwear",
+    "dresses": "one_piece",
+    "bags": "bag",
+    "accessories": "accessory",
+}
+CORE_ZONES = {"top", "bottom", "shoes", "outerwear", "one_piece"}
+EXTRA_ZONES = ("bag", "accessory")
 
 ItemId = Union[int, str]
 
@@ -47,7 +65,8 @@ def _zone(item: WardrobeItemFull) -> Optional[str]:
     for name, types in ZONES.items():
         if label in types:
             return name
-    return None
+    category = item.category or category_for_type(item.type)
+    return CATEGORY_ZONES.get(normalise_label(category))
 
 
 class Recommender:
@@ -80,39 +99,33 @@ class Recommender:
         self._last_outfit_ids = self._outfit_signature(chosen[1])
         return chosen
 
-    def _generate_candidates(self, wardrobe: List[WardrobeItemFull]) -> List[List[WardrobeItemFull]]:
-        tops = [i for i in wardrobe if normalise_type(i.type) in TOPS]
-        bottoms = [i for i in wardrobe if normalise_type(i.type) in BOTTOMS]
-        shoes = [i for i in wardrobe if normalise_type(i.type) in SHOES]
-        outerwear = [i for i in wardrobe if normalise_type(i.type) in OUTERWEAR]
-        one_piece = [i for i in wardrobe if normalise_type(i.type) in ONE_PIECE]
+    @staticmethod
+    def _by_zone(wardrobe: List[WardrobeItemFull]) -> dict:
+        zones = {name: [] for name in ZONES}
+        for item in wardrobe:
+            zone = _zone(item)
+            if zone is not None:
+                zones[zone].append(item)
+        return zones
 
-        candidates = []
+    def _generate_candidates(
+        self,
+        wardrobe: List[WardrobeItemFull],
+        with_shoes: bool,
+    ) -> List[List[WardrobeItemFull]]:
+        zones = self._by_zone(wardrobe)
+        tops, bottoms = zones["top"], zones["bottom"]
+        outerwear, one_piece = zones["outerwear"], zones["one_piece"]
+        shoe_options = [[s] for s in zones["shoes"]] if with_shoes else [[]]
+        layer_options = [[]] + [[o] for o in outerwear]
 
-        if tops and bottoms:
-            for t in tops:
-                for b in bottoms:
-                    combos = [[t, b]]
-                    if outerwear:
-                        combos.extend([[t, b, o] for o in outerwear])
-                    if shoes:
-                        combos.extend([[t, b, s] for s in shoes])
-                        if outerwear:
-                            combos.extend([[t, b, o, s] for o in outerwear for s in shoes])
-                    candidates.extend(combos)
-
-        if one_piece:
-            for o in one_piece:
-                combos = [[o]]
-                if outerwear:
-                    combos.extend([[o, out] for out in outerwear])
-                if shoes:
-                    combos.extend([[o, s] for s in shoes])
-                    if outerwear:
-                        combos.extend([[o, out, s] for out in outerwear for s in shoes])
-                candidates.extend(combos)
-
-        return candidates
+        bases = [[t, b] for t in tops for b in bottoms] + [[o] for o in one_piece]
+        return [
+            base + layer + shoe
+            for base in bases
+            for layer in layer_options
+            for shoe in shoe_options
+        ]
 
     def _style_filtered(self, wardrobe: List[WardrobeItemFull], style: Optional[str]) -> List[WardrobeItemFull]:
         if not style:
@@ -156,31 +169,81 @@ class Recommender:
         swap_id: Optional[str],
         swapped_item: Optional[WardrobeItemFull],
     ) -> List[Tuple[float, List[WardrobeItemFull]]]:
-        candidates = self._generate_candidates(wardrobe)
-        random.shuffle(candidates)
-        scored: List[Tuple[float, List[WardrobeItemFull]]] = []
-
         def keep(candidate: List[WardrobeItemFull], occasion_key: Optional[str]) -> bool:
             if not self._passes_lock_and_swap(candidate, lock_ids, swap_id, swapped_item):
                 return False
             return self.rule_engine.validate_outfit(candidate, occasion_key, season, weather)
 
-        for candidate in candidates:
-            if not keep(candidate, occasion):
-                continue
-            color_score, _, _ = self.rule_engine.score_colors(candidate)
-            scored.append((color_score, candidate))
-
-        if not scored and occasion:
+        def score(
+            candidates: List[List[WardrobeItemFull]],
+            strict: bool,
+        ) -> List[Tuple[float, List[WardrobeItemFull]]]:
+            scored = []
             for candidate in candidates:
-                if normalise_label(occasion) != "gym" and any(is_sport_item(item) for item in candidate):
-                    continue
-                if not keep(candidate, None):
-                    continue
+                if strict:
+                    if not keep(candidate, occasion):
+                        continue
+                else:
+                    if normalise_label(occasion) != "gym" and any(is_sport_item(item) for item in candidate):
+                        continue
+                    if not keep(candidate, None):
+                        continue
                 color_score, _, _ = self.rule_engine.score_colors(candidate)
                 scored.append((color_score, candidate))
+            return scored
 
-        return scored
+        # Shoes complete a look, so shoeless outfits are only a fallback.
+        has_shoes = any(_zone(item) == "shoes" for item in wardrobe)
+        shoe_modes = (True, False) if has_shoes else (False,)
+        candidate_sets = {}
+        for with_shoes in shoe_modes:
+            candidates = self._generate_candidates(wardrobe, with_shoes)
+            random.shuffle(candidates)
+            candidate_sets[with_shoes] = candidates
+
+        for strict in ((True, False) if occasion else (True,)):
+            for with_shoes in shoe_modes:
+                scored = score(candidate_sets[with_shoes], strict)
+                if scored:
+                    return scored
+        return []
+
+    def _attach_extras(
+        self,
+        outfit: List[WardrobeItemFull],
+        pool: List[WardrobeItemFull],
+        occasion: Optional[str],
+        season: Optional[str],
+        weather: Optional[str],
+        lock_ids: Sequence[str],
+        swap_id: Optional[str],
+    ) -> List[WardrobeItemFull]:
+        """Add at most one bag and one accessory that fit the core outfit."""
+        result = list(outfit)
+        zones = self._by_zone(pool)
+        for zone in EXTRA_ZONES:
+            options = [item for item in zones[zone] if _item_key(item.id) != swap_id]
+            locked = [item for item in options if _item_key(item.id) in lock_ids]
+            if locked:
+                result.append(locked[0])
+                continue
+
+            best: List[Tuple[float, WardrobeItemFull]] = []
+            for item in options:
+                if not self.rule_engine.validate_outfit([item], occasion, season, weather):
+                    continue
+                if any(
+                    code == "color_clash"
+                    for other in result
+                    for code, _ in self.rule_engine.score_colors([other, item])[2]
+                ):
+                    continue
+                best.append((self.rule_engine.score_colors(result + [item])[0], item))
+            if not best:
+                continue
+            top_score = max(score for score, _ in best)
+            result.append(random.choice([item for score, item in best if score == top_score]))
+        return result
 
     def _reasons(
         self,
@@ -243,34 +306,34 @@ class Recommender:
             if _item_key(item_id) and _item_key(item_id) not in locks
         }
 
+        by_key = {_item_key(item.id): item for item in wardrobe}
+        core_locks = [key for key in locks if key in by_key and _zone(by_key[key]) in CORE_ZONES]
+        core_swapped = swapped_item if swapped_item is not None and _zone(swapped_item) in CORE_ZONES else None
+
         def score_wardrobe(source: List[WardrobeItemFull]):
             styled = self._style_filtered(source, style)
-            found = self._collect(styled, occasion, season, weather, locks, swap_key, swapped_item)
-            relaxed = False
-            if not found and style:
-                found = self._collect(source, occasion, season, weather, locks, swap_key, swapped_item)
-                relaxed = bool(found)
-            return found, relaxed
+            found = self._collect(styled, occasion, season, weather, core_locks, swap_key, core_swapped)
+            if found or not style:
+                return found, False, styled
+            found = self._collect(source, occasion, season, weather, core_locks, swap_key, core_swapped)
+            return found, bool(found), source
 
         active = [item for item in wardrobe if _item_key(item.id) not in excluded]
-        scored, style_relaxed = score_wardrobe(active)
+        scored, style_relaxed, extras_pool = score_wardrobe(active)
         repeated = False
         if not scored and excluded:
-            scored, style_relaxed = score_wardrobe(wardrobe)
+            scored, style_relaxed, extras_pool = score_wardrobe(wardrobe)
             repeated = bool(scored)
 
         if not scored:
             return RecommendResult([], 0.0, 0.0, [], [])
 
-        scored.sort(key=lambda row: (row[0], len(row[1])), reverse=True)
-        pool = scored
-        best_score = pool[0][0]
-        best_len = len(pool[0][1])
-        top_candidates = [
-            row for row in pool
-            if row[0] == best_score and len(row[1]) == best_len
-        ]
-        _, best_outfit = self._pick_outfit(top_candidates)
+        best_score = max(row[0] for row in scored)
+        top_candidates = [row for row in scored if row[0] == best_score]
+        _, core_outfit = self._pick_outfit(top_candidates)
+        best_outfit = self._attach_extras(
+            core_outfit, extras_pool, occasion, season, weather, locks, swap_key,
+        )
         color_score, color_reasons, color_codes = self.rule_engine.score_colors(best_outfit)
         reasons, reason_codes = self._reasons(
             best_outfit, season, weather, style, style_relaxed, color_reasons, color_codes, repeated,

@@ -185,6 +185,22 @@
             "forbidden_item_occasions": [
                 "gym"
             ]
+        },
+        "family": {
+            "forbidden_types": [
+                "tracksuit",
+                "pyjama",
+                "flip_flops",
+                "tank_top",
+                "shorts",
+                "jersey"
+            ],
+            "forbidden_styles": [
+                "sport"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
+            ]
         }
     },
     "color_rules": {
