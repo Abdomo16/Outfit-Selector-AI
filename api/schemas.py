@@ -66,6 +66,7 @@ class RecommendRequest(BaseModel):
     lock_ids:  Optional[List[Union[int, str]]] = None
     swap_id:   Optional[Union[int, str]] = None
     exclude_ids: Optional[List[Union[int, str]]] = None
+    layer:     Optional[bool] = None   # cool night: prefer a look with a jacket
 
 
 class ReasonCode(BaseModel):

@@ -359,6 +359,25 @@ def test_reason_codes_travel_with_the_english_sentences():
     assert any(code.code == "weather" for code in result.reason_codes)
 
 
+def test_layer_prefers_a_look_with_a_jacket():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [
+        _item(1, "t_shirt", "white"),
+        _item(2, "jeans", "navy"),
+        _item(3, "jacket", "black"),
+    ]
+    for _ in range(5):
+        result = recommender.recommend(wardrobe, occasion="everyday", weather="mild", layer=True)
+        assert 3 in {item.id for item in result.outfit}
+
+
+def test_layer_still_dresses_a_wardrobe_without_jackets():
+    recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
+    wardrobe = [_item(1, "t_shirt", "white"), _item(2, "jeans", "navy")]
+    result = recommender.recommend(wardrobe, occasion="everyday", layer=True)
+    assert {item.id for item in result.outfit} == {1, 2}
+
+
 def test_trip_occasions():
     engine = RuleEngine("rules/fashion_rules.json")
     assert engine.validate_outfit([_item(1, "shorts", "beige")], occasion="beach") is True
@@ -368,3 +387,18 @@ def test_trip_occasions():
     assert engine.validate_outfit([_item(1, "heels", "black")], occasion="sightseeing") is False
     assert engine.validate_outfit([_item(1, "t_shirt", "white")], occasion="wedding") is False
     assert engine.validate_outfit([_item(1, "blazer", "navy")], occasion="wedding") is True
+
+
+def test_recommend_route_accepts_layer():
+    response = client.post("/recommend/", json={
+        "wardrobe": [
+            {"id": 1, "type": "t_shirt", "confidence": 0.9, "color": "white", "hex": "#fff"},
+            {"id": 2, "type": "jeans", "confidence": 0.9, "color": "navy", "hex": "#000"},
+            {"id": 3, "type": "jacket", "confidence": 0.9, "color": "black", "hex": "#000"},
+        ],
+        "occasion": "sightseeing",
+        "weather": "mild",
+        "layer": True,
+    })
+    assert response.status_code == 200
+    assert 3 in {item["id"] for item in response.json()["outfit"]}

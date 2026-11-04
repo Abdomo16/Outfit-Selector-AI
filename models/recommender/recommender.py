@@ -168,6 +168,7 @@ class Recommender:
         lock_ids: Sequence[str],
         swap_id: Optional[str],
         swapped_item: Optional[WardrobeItemFull],
+        layer: bool = False,
     ) -> List[Tuple[float, List[WardrobeItemFull]]]:
         def keep(candidate: List[WardrobeItemFull], occasion_key: Optional[str]) -> bool:
             if not self._passes_lock_and_swap(candidate, lock_ids, swap_id, swapped_item):
@@ -204,6 +205,13 @@ class Recommender:
         for strict in ((True, False) if occasion else (True,)):
             for with_shoes in shoe_modes:
                 scored = score(candidate_sets[with_shoes], strict)
+                if layer:
+                    # A cool night: keep the looks with a jacket when there are any.
+                    layered = [
+                        row for row in scored
+                        if any(_zone(item) == "outerwear" for item in row[1])
+                    ]
+                    scored = layered or scored
                 if scored:
                     return scored
         return []
@@ -294,6 +302,7 @@ class Recommender:
         lock_ids: Optional[Sequence[ItemId]] = None,
         swap_id: Optional[ItemId] = None,
         exclude_ids: Optional[Sequence[ItemId]] = None,
+        layer: bool = False,
     ) -> RecommendResult:
         locks = [_item_key(item_id) for item_id in (lock_ids or []) if _item_key(item_id)]
         swap_key = _item_key(swap_id) or None
@@ -312,10 +321,10 @@ class Recommender:
 
         def score_wardrobe(source: List[WardrobeItemFull]):
             styled = self._style_filtered(source, style)
-            found = self._collect(styled, occasion, season, weather, core_locks, swap_key, core_swapped)
+            found = self._collect(styled, occasion, season, weather, core_locks, swap_key, core_swapped, layer)
             if found or not style:
                 return found, False, styled
-            found = self._collect(source, occasion, season, weather, core_locks, swap_key, core_swapped)
+            found = self._collect(source, occasion, season, weather, core_locks, swap_key, core_swapped, layer)
             return found, bool(found), source
 
         active = [item for item in wardrobe if _item_key(item.id) not in excluded]
