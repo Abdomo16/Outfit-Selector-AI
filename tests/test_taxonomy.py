@@ -14,8 +14,8 @@ EXPECTED_ZONE = {
     "Outerwear": "outerwear",
     "Dresses": "one_piece",
     "Shoes": "shoes",
-    "Bags": None,
-    "Accessories": None,
+    "Bags": "bag",
+    "Accessories": "accessory",
 }
 
 

@@ -16,6 +16,7 @@ def recommend_outfits(request: RecommendRequest):
         lock_ids=request.lock_ids,
         swap_id=request.swap_id,
         exclude_ids=request.exclude_ids,
+        layer=bool(request.layer),
     )
     if not result.outfit:
         raise HTTPException(status_code=404, detail="No valid combinations found for the given rules.")

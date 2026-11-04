@@ -126,7 +126,7 @@ class RuleEngine:
         """Average pairwise color compatibility. Unknown colors score 0.5."""
         rules = self.rules.get("color_rules", {})
         if len(items) < 2:
-            return 0.5, []
+            return 0.5, [], []
 
         scores: list[float] = []
         reasons: list[str] = []

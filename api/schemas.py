@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 
 #  Phase 2: Wardrobe Upload 
@@ -30,6 +30,7 @@ class WardrobeItemFull(BaseModel):
     season:      Optional[str] = None
     embedding:   Optional[List[float]] = None
     image_path:  Optional[str] = None
+    cutout_path: Optional[str] = None
 
 
 class UploadResponse(BaseModel):
@@ -65,6 +66,7 @@ class RecommendRequest(BaseModel):
     lock_ids:  Optional[List[Union[int, str]]] = None
     swap_id:   Optional[Union[int, str]] = None
     exclude_ids: Optional[List[Union[int, str]]] = None
+    layer:     Optional[bool] = None   # cool night: prefer a look with a jacket
 
 
 class ReasonCode(BaseModel):
@@ -91,3 +93,40 @@ class RecommendResponse(BaseModel):
     reasons: List[str] = []
     reason_codes: List[ReasonCode] = []
     occasion: str
+
+
+#  Chat 
+
+class ChatTurn(BaseModel):
+    role:    str                        # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message:  str
+    history:  List[ChatTurn] = []
+    wardrobe: List[WardrobeItemFull]
+    occasion: Optional[str] = None      # occasion of the outfit being tweaked
+    weather:  Optional[str] = None
+    season:   Optional[str] = None
+    current_outfit_ids: List[Union[int, str]] = []
+    exclude_ids: List[Union[int, str]] = []
+    locale:   Optional[str] = None
+
+
+class RoutineRequest(BaseModel):
+    message: str
+    locale:  Optional[str] = None
+
+
+class RoutineResponse(BaseModel):
+    days:  Dict[str, List[str]] = {}   # ISO weekday ("1" = Monday) -> occasions
+    reply: str = ""
+    used_fallback: bool = False
+
+
+class ChatResponse(BaseModel):
+    reply:    str = ""
+    outfit:   Optional[RecommendResponse] = None
+    used_fallback: bool = False
+    no_match: bool = False             # an outfit was wanted but none fits
