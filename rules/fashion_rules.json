@@ -201,6 +201,59 @@
             "forbidden_item_occasions": [
                 "gym"
             ]
+        },
+        "beach": {
+            "forbidden_types": [
+                "suit",
+                "tuxedo",
+                "blazer",
+                "dress_shirt",
+                "oxford_shoes",
+                "loafers",
+                "heels",
+                "boots",
+                "heavy_coat",
+                "wool_sweater"
+            ],
+            "forbidden_styles": [
+                "elegant"
+            ]
+        },
+        "sightseeing": {
+            "forbidden_types": [
+                "suit",
+                "tuxedo",
+                "oxford_shoes",
+                "heels",
+                "flip_flops",
+                "tank_top",
+                "shorts",
+                "pyjama"
+            ],
+            "forbidden_styles": [
+                "elegant"
+            ]
+        },
+        "wedding": {
+            "forbidden_types": [
+                "hoodie",
+                "tracksuit",
+                "pyjama",
+                "t_shirt",
+                "tank_top",
+                "shorts",
+                "jersey",
+                "flip_flops",
+                "sneakers",
+                "sandals"
+            ],
+            "forbidden_styles": [
+                "sport",
+                "streetwear"
+            ],
+            "forbidden_item_occasions": [
+                "gym"
+            ]
         }
     },
     "color_rules": {

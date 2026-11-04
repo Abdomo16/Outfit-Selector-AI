@@ -357,3 +357,14 @@ def test_reason_codes_travel_with_the_english_sentences():
     pair = next(code for code in result.reason_codes if code.code == "color_pair")
     assert pair.colors == ["white", "navy"]
     assert any(code.code == "weather" for code in result.reason_codes)
+
+
+def test_trip_occasions():
+    engine = RuleEngine("rules/fashion_rules.json")
+    assert engine.validate_outfit([_item(1, "shorts", "beige")], occasion="beach") is True
+    assert engine.validate_outfit([_item(1, "suit", "black")], occasion="beach") is False
+    # Temples and mosques: knees covered, comfortable shoes.
+    assert engine.validate_outfit([_item(1, "shorts", "beige")], occasion="sightseeing") is False
+    assert engine.validate_outfit([_item(1, "heels", "black")], occasion="sightseeing") is False
+    assert engine.validate_outfit([_item(1, "t_shirt", "white")], occasion="wedding") is False
+    assert engine.validate_outfit([_item(1, "blazer", "navy")], occasion="wedding") is True
