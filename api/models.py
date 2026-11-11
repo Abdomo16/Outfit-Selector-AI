@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, Date, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMPTZ, UUID
+from sqlalchemy import TIMESTAMP
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from api.db import Base
 
@@ -21,8 +22,8 @@ class User(Base):
     name          = Column(String, nullable=False, default="User")
     avatar_url    = Column(String)
     is_premium    = Column(Boolean, default=False)
-    created_at    = Column(TIMESTAMPTZ, default=_now)
-    updated_at    = Column(TIMESTAMPTZ, default=_now, onupdate=_now)
+    created_at    = Column(TIMESTAMP(timezone=True), default=_now)
+    updated_at    = Column(TIMESTAMP(timezone=True), default=_now, onupdate=_now)
 
 
 class WardrobeItem(Base):
@@ -43,7 +44,7 @@ class WardrobeItem(Base):
     embedding       = Column(ARRAY(Float))
     secondary_color = Column(String)
     secondary_hex   = Column(String)
-    created_at      = Column(TIMESTAMPTZ, default=_now)
+    created_at      = Column(TIMESTAMP(timezone=True), default=_now)
 
 
 class SavedOutfit(Base):
@@ -52,7 +53,7 @@ class SavedOutfit(Base):
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     outfit_data = Column(JSONB, nullable=False)
-    created_at  = Column(TIMESTAMPTZ, default=_now)
+    created_at  = Column(TIMESTAMP(timezone=True), default=_now)
 
 
 class WearLog(Base):
@@ -62,7 +63,7 @@ class WearLog(Base):
     user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     worn_on     = Column(Date, nullable=False)
     outfit_data = Column(JSONB, nullable=False)
-    created_at  = Column(TIMESTAMPTZ, default=_now)
+    created_at  = Column(TIMESTAMP(timezone=True), default=_now)
 
 
 class OutfitPlan(Base):
@@ -74,4 +75,4 @@ class OutfitPlan(Base):
     title      = Column(String)
     starts_on  = Column(Date, nullable=False)
     days       = Column(JSONB, nullable=False)
-    created_at = Column(TIMESTAMPTZ, default=_now)
+    created_at = Column(TIMESTAMP(timezone=True), default=_now)

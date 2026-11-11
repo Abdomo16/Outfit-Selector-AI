@@ -2,11 +2,10 @@
 import os
 from datetime import datetime, timedelta, timezone
 
+import bcrypt as _bcrypt
 from fastapi import HTTPException
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _ALGORITHM = "HS256"
 _EXPIRE_DAYS = 30
 
@@ -19,11 +18,11 @@ def _secret() -> str:
 
 
 def hash_password(password: str) -> str:
-    return _pwd.hash(password)
+    return _bcrypt.hashpw(password.encode()[:72], _bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd.verify(plain, hashed)
+    return _bcrypt.checkpw(plain.encode()[:72], hashed.encode())
 
 
 def create_access_token(user_id: str) -> str:
