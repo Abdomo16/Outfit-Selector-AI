@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: outfit_selector
+      POSTGRES_USER: outfit_user
+      POSTGRES_PASSWORD: outfit_pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata:

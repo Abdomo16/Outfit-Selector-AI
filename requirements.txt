@@ -14,4 +14,7 @@ onnxruntime
 python-dotenv
 pytest
 requests
-supabase
+sqlalchemy
+psycopg2-binary
+python-jose[cryptography]
+passlib[bcrypt]

@@ -1,23 +1,33 @@
-"""Wardrobe photos: resizing, encoding and the Supabase Storage bucket."""
+"""Wardrobe photos: resizing, encoding, and local-filesystem storage.
+
+Photos are stored under STORAGE_ROOT/wardrobe-images/{item_id}/ and served
+by FastAPI's StaticFiles mount at /static/.  Set BASE_URL in the environment
+so the public URL resolves correctly when the server is reachable from other
+hosts (e.g. a device hitting the backend on the LAN).
+"""
 import base64
 import io
+import os
 import uuid
+from pathlib import Path
 
 from PIL import Image
 
-from api import supabase_client
-
-WARDROBE_BUCKET = "wardrobe-images"
 MAX_IMAGE_SIDE = 1536
 PREVIEW_SIDE = 320
 
+_STORAGE_ROOT = Path(os.getenv("STORAGE_ROOT", "storage"))
+_WARDROBE_DIR = _STORAGE_ROOT / "wardrobe-images"
 
-def ensure_bucket() -> None:
-    """Create the wardrobe storage bucket if it does not exist."""
-    supabase = supabase_client.get_supabase()
-    buckets = supabase.storage.list_buckets()
-    if not any(bucket.name == WARDROBE_BUCKET for bucket in buckets):
-        supabase.storage.create_bucket(WARDROBE_BUCKET, options={"public": True})
+
+def _base_url() -> str:
+    return os.getenv("BASE_URL", "http://localhost:8002").rstrip("/")
+
+
+def _item_dir(item_id: str) -> Path:
+    d = _WARDROBE_DIR / item_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def downscale(image: Image.Image, max_side: int = MAX_IMAGE_SIDE) -> Image.Image:
@@ -27,83 +37,54 @@ def downscale(image: Image.Image, max_side: int = MAX_IMAGE_SIDE) -> Image.Image
     if longest <= max_side:
         return image
     scale = max_side / float(longest)
-    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
-    return image.resize(new_size, Image.Resampling.LANCZOS)
+    return image.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
 
 
 def encode_crop(image: Image.Image, fmt: str = "JPEG") -> bytes:
-    """Encode a PIL crop as JPEG (default) or PNG bytes."""
-    buffer = io.BytesIO()
-    rgb = image.convert("RGB")
+    """Encode a PIL image as JPEG (default) or PNG bytes."""
+    buf = io.BytesIO()
     if fmt.upper() == "PNG":
-        rgb.save(buffer, format="PNG", optimize=True)
+        image.save(buf, format="PNG", optimize=True)
     else:
-        rgb.save(buffer, format="JPEG", quality=85, optimize=True)
-    return buffer.getvalue()
+        image.convert("RGB").save(buf, format="JPEG", quality=85, optimize=True)
+    return buf.getvalue()
 
 
 def preview_base64(crop: Image.Image | None) -> str | None:
-    """A small JPEG of the crop for the keep-or-skip sheet."""
+    """Small JPEG thumbnail for the keep-or-skip sheet, as base64."""
     if crop is None:
         return None
     return base64.b64encode(encode_crop(downscale(crop, PREVIEW_SIDE))).decode("ascii")
 
 
-def public_url(path: str) -> str:
-    """Normalize Supabase public URL (strip trailing ? some clients add)."""
-    url = supabase_client.get_supabase().storage.from_(WARDROBE_BUCKET).get_public_url(path)
-    return url.rstrip("?")
-
-
-def _upload(path: str, data: bytes, mime: str) -> None:
-    supabase_client.get_supabase().storage.from_(WARDROBE_BUCKET).upload(
-        path,
-        data,
-        file_options={"content-type": mime, "contentType": mime, "upsert": "true"},
-    )
+def _public_url(rel_path: Path) -> str:
+    """Build a public URL from a path relative to STORAGE_ROOT."""
+    parts = rel_path.parts
+    return f"{_base_url()}/static/{'/'.join(parts)}"
 
 
 def upload_crop(image: Image.Image, item_id: str) -> str:
-    """Upload a crop to Supabase Storage and return its public URL.
-
-    JPEG is tried first because it is typically 5–10× smaller than PNG for
-    photos. PNG is the fallback for the rare bucket configurations that
-    reject JPEG uploads.
-    """
-    ensure_bucket()
-    attempts = (
-        ("jpg", "JPEG", "image/jpeg"),
-        ("png", "PNG", "image/png"),
-    )
-    last_error: Exception | None = None
-
-    for ext, fmt, mime in attempts:
-        path = f"{item_id}/{uuid.uuid4()}.{ext}"
-        try:
-            _upload(path, encode_crop(image, fmt=fmt), mime)
-            return public_url(path)
-        except Exception as exc:
-            last_error = exc
-
-    raise RuntimeError(f"Storage upload failed: {last_error}")
+    """Save a JPEG crop to local storage and return its public URL."""
+    dest = _item_dir(item_id) / f"{uuid.uuid4()}.jpg"
+    dest.write_bytes(encode_crop(image, fmt="JPEG"))
+    return _public_url(dest.relative_to(_STORAGE_ROOT))
 
 
 def upload_cutout(image: Image.Image, item_id: str) -> str | None:
-    """Upload a transparent-background RGBA PNG and return its public URL.
+    """Save a transparent-background RGBA PNG and return its public URL.
 
     PNG is required because JPEG has no alpha channel; saving as JPEG
     would composite the garment against white and lose the transparency
-    the mannequin view depends on.
+    the outfit preview depends on.
     """
-    ensure_bucket()
-    buffer = io.BytesIO()
-    image.convert("RGBA").save(buffer, format="PNG", optimize=True)
-    path = f"{item_id}/cutout.png"
+    dest = _item_dir(item_id) / "cutout.png"
     try:
-        _upload(path, buffer.getvalue(), "image/png")
-        return public_url(path)
+        buf = io.BytesIO()
+        image.convert("RGBA").save(buf, format="PNG", optimize=True)
+        dest.write_bytes(buf.getvalue())
+        return _public_url(dest.relative_to(_STORAGE_ROOT))
     except Exception as exc:
-        print(f"[wardrobe] WARNING: cutout upload failed for {item_id}: {exc}")
+        print(f"[wardrobe] WARNING: cutout save failed for {item_id}: {exc}")
         return None
 
 
@@ -126,22 +107,23 @@ def make_cutout(crop: Image.Image, pipeline) -> Image.Image | None:
         return None
 
 
-def storage_path(image_url: str | None) -> str | None:
-    """The object path inside the wardrobe bucket for a public photo URL."""
+def storage_path(image_url: str | None) -> Path | None:
+    """The local Path for a photo public URL, or None if the file is not from local storage."""
     if not image_url:
         return None
-    marker = f"/{WARDROBE_BUCKET}/"
-    url = image_url.split("?", 1)[0]
-    if marker not in url:
+    marker = "/static/"
+    if marker not in image_url:
         return None
-    return url.split(marker, 1)[1] or None
+    rel = image_url.split(marker, 1)[1]
+    path = _STORAGE_ROOT / rel
+    return path if path.exists() else None
 
 
-def remove_photos(paths: list[str]) -> None:
-    """Delete photos from the bucket; a failure is logged, not raised."""
-    if not paths:
-        return
-    try:
-        supabase_client.get_supabase().storage.from_(WARDROBE_BUCKET).remove(paths)
-    except Exception as exc:
-        print(f"[wardrobe] WARNING: could not remove photos {paths}: {exc}")
+def remove_photos(paths: list[Path | None]) -> None:
+    """Delete local photo files; failures are logged, not raised."""
+    for path in paths:
+        if path and path.exists():
+            try:
+                path.unlink()
+            except Exception as exc:
+                print(f"[wardrobe] WARNING: could not remove {path}: {exc}")
