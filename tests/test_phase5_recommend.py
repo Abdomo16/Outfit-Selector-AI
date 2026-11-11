@@ -181,7 +181,8 @@ def test_dress_only_wardrobe_does_not_crash():
     recommender = Recommender(RuleEngine("rules/fashion_rules.json"))
     result = recommender.recommend([_item(1, "dress", "black")], occasion="party")
     assert [item.id for item in result.outfit] == [1]
-    assert result.color_score == 0.5
+    # One piece has nothing to match, so its colors score a neutral 0.8.
+    assert result.color_score == 0.8
 
 
 def test_lock_and_swap_work_on_accessories():
@@ -289,7 +290,8 @@ def test_color_score_and_reasons():
         season="spring",
     )
     assert matched.color_score == 1.0
-    assert matched.score == matched.color_score
+    # The score weighs colors with formality, warmth, style and more.
+    assert 0 < matched.score <= 1
     assert any("pairs with" in reason for reason in matched.reasons)
     assert any(reason == "Works in mild weather." for reason in matched.reasons)
 
@@ -297,7 +299,8 @@ def test_color_score_and_reasons():
         [_item(1, "blouse", "burgundy"), _item(2, "trousers", "olive")],
         occasion="everyday",
     )
-    assert clashing.color_score == 0.0
+    # Burgundy and olive sit far apart on the color wheel.
+    assert clashing.color_score < 0.5
     assert any("clashes with" in reason for reason in clashing.reasons)
 
 

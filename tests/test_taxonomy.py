@@ -1,6 +1,6 @@
 from api.schemas import WardrobeItemFull
 from models import taxonomy
-from models.recommender.recommender import _zone
+from models.recommender.recommender import zone_of
 
 DF2_CLASSES = {
     "short_sleeved_shirt", "long_sleeved_shirt", "short_sleeved_outwear",
@@ -43,7 +43,7 @@ def test_every_type_lands_in_its_recommender_slot():
     for category, zone in EXPECTED_ZONE.items():
         for type_name in taxonomy.types_for_category(category):
             item = WardrobeItemFull(type=type_name, confidence=1.0, color="black", hex="#000000")
-            assert _zone(item) == zone, f"{type_name} should be in {zone}"
+            assert zone_of(item) == zone, f"{type_name} should be in {zone}"
 
 
 def test_hint_for_label():

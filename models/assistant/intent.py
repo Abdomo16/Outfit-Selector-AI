@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Sequence
 
 from api.schemas import WardrobeItemFull
-from models.recommender.recommender import ZONES, _zone
+from models.recommender.recommender import ZONES, zone_of
 from models.recommender.rule_engine import normalise_label
 
 OCCASIONS = ("everyday", "university", "work", "date night", "gym", "party", "travel", "formal", "family")
@@ -156,7 +156,7 @@ Rules:
 
 
 def _summary_line(item: WardrobeItemFull) -> str:
-    parts = [str(item.id), _zone(item) or "other", item.type, item.color]
+    parts = [str(item.id), zone_of(item) or "other", item.type, item.color]
     if item.style:
         parts.append(item.style)
     return " | ".join(parts)

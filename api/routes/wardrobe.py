@@ -1,6 +1,4 @@
-import base64
 import io
-import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -8,209 +6,16 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from fastapi.responses import JSONResponse
 from PIL import Image
 
-from api.schemas import DeleteItemsRequest, KeepItemsRequest, PendingItem, WardrobeItemFull
-from api.supabase_client import get_supabase
+from api import supabase_client
+from api.auth import user_id_from_token
+from api.schemas import DeleteItemsRequest, KeepItemsRequest, PendingItem
+from api.services import upload_jobs
+from api.services import wardrobe_storage as storage
+from api.services.wardrobe_items import as_dict, store_item
 
 router = APIRouter()
 
-WARDROBE_BUCKET = "wardrobe-images"
-MAX_IMAGE_SIDE = 1536
-PREVIEW_SIDE = 320
-_JOBS: dict[str, dict] = {}
-_JOBS_LOCK = threading.Lock()
 _EXECUTOR = ThreadPoolExecutor(max_workers=1)
-
-
-def _ensure_bucket() -> None:
-    """Create the wardrobe storage bucket if it does not exist."""
-    supabase = get_supabase()
-    buckets = supabase.storage.list_buckets()
-    if not any(bucket.name == WARDROBE_BUCKET for bucket in buckets):
-        supabase.storage.create_bucket(WARDROBE_BUCKET, options={"public": True})
-
-
-def _downscale(image: Image.Image, max_side: int = MAX_IMAGE_SIDE) -> Image.Image:
-    """Shrink longest side to max_side (no upscale)."""
-    w, h = image.size
-    longest = max(w, h)
-    if longest <= max_side:
-        return image
-    scale = max_side / float(longest)
-    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
-    return image.resize(new_size, Image.Resampling.LANCZOS)
-
-
-def _encode_crop(image: Image.Image, fmt: str = "JPEG") -> bytes:
-    """Encode a PIL crop as JPEG (default) or PNG bytes."""
-    buffer = io.BytesIO()
-    rgb = image.convert("RGB")
-    if fmt.upper() == "PNG":
-        rgb.save(buffer, format="PNG", optimize=True)
-    else:
-        rgb.save(buffer, format="JPEG", quality=85, optimize=True)
-    return buffer.getvalue()
-
-
-def _public_url(path: str) -> str:
-    """Normalize Supabase public URL (strip trailing ? some clients add)."""
-    url = get_supabase().storage.from_(WARDROBE_BUCKET).get_public_url(path)
-    return url.rstrip("?")
-
-
-def _upload_crop(image: Image.Image, item_id: str) -> str:
-    """Upload a crop to Supabase Storage and return its public URL."""
-    _ensure_bucket()
-    supabase = get_supabase()
-
-    attempts = (
-        ("jpg", "JPEG", "image/jpeg"),
-        ("png", "PNG", "image/png"),
-    )
-    last_error: Exception | None = None
-
-    for ext, fmt, mime in attempts:
-        path = f"{item_id}/{uuid.uuid4()}.{ext}"
-        data = _encode_crop(image, fmt=fmt)
-        try:
-            supabase.storage.from_(WARDROBE_BUCKET).upload(
-                path,
-                data,
-                file_options={
-                    "content-type": mime,
-                    "contentType": mime,
-                    "upsert": "true",
-                },
-            )
-            return _public_url(path)
-        except Exception as exc:
-            last_error = exc
-
-    raise RuntimeError(f"Storage upload failed: {last_error}")
-
-
-def _upload_cutout(image: Image.Image, item_id: str) -> str | None:
-    """Upload a transparent-background RGBA PNG and return its public URL."""
-    _ensure_bucket()
-    supabase = get_supabase()
-    buffer = io.BytesIO()
-    image.convert("RGBA").save(buffer, format="PNG", optimize=True)
-    path = f"{item_id}/cutout.png"
-    try:
-        supabase.storage.from_(WARDROBE_BUCKET).upload(
-            path,
-            buffer.getvalue(),
-            file_options={"content-type": "image/png", "contentType": "image/png", "upsert": "true"},
-        )
-        return _public_url(path)
-    except Exception as exc:
-        print(f"[wardrobe] WARNING: cutout upload failed for {item_id}: {exc}")
-        return None
-
-
-def _make_cutout(crop: Image.Image, pipeline) -> Image.Image | None:
-    """Run rembg on a crop using the pipeline's loaded session. Returns RGBA or None."""
-    try:
-        bg = getattr(getattr(pipeline, "color_detector", None), "background_remover", None)
-        if bg is None:
-            return None
-        from rembg import remove as rembg_remove
-        return rembg_remove(crop.convert("RGB"), session=bg.session)
-    except Exception as exc:
-        print(f"[wardrobe] WARNING: cutout generation failed: {exc}")
-        return None
-
-
-def _insert_item(supabase, payload: dict):
-    """Insert a wardrobe row. The embedding is optional if the column rejects it."""
-    try:
-        return supabase.table("wardrobe_items").insert(payload).execute()
-    except Exception:
-        if payload.get("embedding") is None:
-            raise
-        return supabase.table("wardrobe_items").insert({**payload, "embedding": None}).execute()
-
-
-def _set_job(job_id: str, **fields) -> None:
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id, {})
-        job.update(fields)
-        _JOBS[job_id] = job
-
-
-def _get_job(job_id: str) -> dict | None:
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
-        return dict(job) if job else None
-
-
-def _store_item(
-    supabase, item: dict, crop: Image.Image | None, user_id: str | None,
-    cutout_img: Image.Image | None = None,
-) -> dict:
-    """Upload the crop and optional cutout, insert the wardrobe row."""
-    item_id = str(uuid.uuid4())
-
-    # Upload crop BEFORE insert so we never persist a row without image_path.
-    image_url = None
-    if crop is not None:
-        try:
-            image_url = _upload_crop(crop, item_id)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to upload crop for item {item_id}: {exc}") from exc
-
-    cutout_url = None
-    if cutout_img is not None:
-        cutout_url = _upload_cutout(cutout_img, item_id)
-
-    payload = {
-        "id": item_id,
-        "user_id": user_id,
-        "category": item.get("category"),
-        "type": item.get("type"),
-        "confidence": float(item.get("confidence", 0)),
-        "color": item.get("color"),
-        "hex": item.get("hex"),
-        "secondary_color": item.get("secondary_color"),
-        "secondary_hex": item.get("secondary_hex"),
-        "pattern": item.get("pattern"),
-        "style": item.get("style"),
-        "season": item.get("season"),
-        "embedding": item.get("embedding"),
-        "image_path": image_url,
-        "cutout_path": cutout_url,
-    }
-
-    response = _insert_item(supabase, payload)
-    if not response.data:
-        raise RuntimeError("Failed to save wardrobe item to database.")
-
-    record = response.data[0]
-
-    full = WardrobeItemFull(
-        id=record["id"],
-        category=record.get("category"),
-        type=record["type"],
-        confidence=record["confidence"],
-        color=record["color"],
-        hex=record["hex"],
-        secondary_color=record.get("secondary_color"),
-        secondary_hex=record.get("secondary_hex"),
-        pattern=record.get("pattern"),
-        style=record.get("style"),
-        occasion=item.get("occasion"),
-        season=record.get("season"),
-        embedding=record.get("embedding"),
-        image_path=record.get("image_path") or image_url,
-        cutout_path=record.get("cutout_path") or cutout_url,
-    )
-    return full.model_dump() if hasattr(full, "model_dump") else full.dict()
-
-
-def _preview_base64(crop: Image.Image | None) -> str | None:
-    """A small JPEG of the crop for the keep-or-skip sheet."""
-    if crop is None:
-        return None
-    return base64.b64encode(_encode_crop(_downscale(crop, PREVIEW_SIDE))).decode("ascii")
 
 
 def _process_upload_job(job_id: str, contents: bytes, user_id: str | None, pipeline) -> None:
@@ -224,18 +29,18 @@ def _process_upload_job(job_id: str, contents: bytes, user_id: str | None, pipel
         try:
             image = Image.open(io.BytesIO(contents)).convert("RGB")
         except Exception:
-            _set_job(job_id, status="failed", error="Could not decode image file.")
+            upload_jobs.set_job(job_id, status="failed", error="Could not decode image file.")
             return
 
-        image = _downscale(image)
+        image = storage.downscale(image)
 
         try:
             result = pipeline.process_upload(image)
         except Exception:
-            _set_job(job_id, status="failed", error="Failed to process image.")
+            upload_jobs.set_job(job_id, status="failed", error="Failed to process image.")
             return
 
-        supabase = get_supabase()
+        supabase = supabase_client.get_supabase()
         stored_items = []
         pending = []
         held = {}
@@ -246,28 +51,26 @@ def _process_upload_job(job_id: str, contents: bytes, user_id: str | None, pipel
             if reason:
                 pending_id = str(uuid.uuid4())
                 held[pending_id] = (item, crop)
-                entry = PendingItem(
+                pending.append(as_dict(PendingItem(
                     id=pending_id,
                     reason=reason,
                     type=item.get("type") or "Unknown",
                     category=item.get("category"),
                     color=item.get("color") or "Unknown",
-                    preview_base64=_preview_base64(crop),
-                )
-                pending.append(entry.model_dump() if hasattr(entry, "model_dump") else entry.dict())
+                    preview_base64=storage.preview_base64(crop),
+                )))
                 continue
 
             try:
-                cutout_img = _make_cutout(crop, pipeline) if crop is not None else None
-                stored_items.append(_store_item(supabase, item, crop, user_id, cutout_img=cutout_img))
+                stored_items.append(store_item(supabase, item, crop, user_id, pipeline))
             except Exception as exc:
-                _set_job(job_id, status="failed", error=str(exc))
+                upload_jobs.set_job(job_id, status="failed", error=str(exc))
                 return
 
-        _set_job(job_id, status="done", items=stored_items, pending=pending,
-                 held=held, error=None)
+        upload_jobs.set_job(job_id, status="done", items=stored_items, pending=pending,
+                            held=held, error=None)
     except Exception as exc:
-        _set_job(job_id, status="failed", error=str(exc))
+        upload_jobs.set_job(job_id, status="failed", error=str(exc))
 
 
 @router.post("/upload")
@@ -288,8 +91,8 @@ async def upload_wardrobe_item(
         raise HTTPException(status_code=400, detail="Empty image file.")
 
     job_id = str(uuid.uuid4())
-    _set_job(job_id, status="processing", items=[], pending=[], held={},
-             user_id=user_id, error=None)
+    upload_jobs.set_job(job_id, status="processing", items=[], pending=[], held={},
+                        user_id=user_id, error=None)
 
     pipeline = request.app.state.pipeline
     _EXECUTOR.submit(_process_upload_job, job_id, contents, user_id, pipeline)
@@ -303,7 +106,7 @@ async def upload_wardrobe_item(
 @router.get("/jobs/{job_id}")
 def get_upload_job(job_id: str):
     """Return processing | done | failed for an upload job."""
-    job = _get_job(job_id)
+    job = upload_jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
@@ -316,32 +119,6 @@ def get_upload_job(job_id: str):
     }
 
 
-def _storage_path(image_url: str | None) -> str | None:
-    """The object path inside the wardrobe bucket for a public photo URL."""
-    if not image_url:
-        return None
-    marker = f"/{WARDROBE_BUCKET}/"
-    url = image_url.split("?", 1)[0]
-    if marker not in url:
-        return None
-    return url.split(marker, 1)[1] or None
-
-
-def _user_id_from_token(authorization: str | None) -> str:
-    """The Supabase user behind a Bearer access token, or 401."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing access token.")
-    token = authorization[len("bearer "):].strip()
-    try:
-        response = get_supabase().auth.get_user(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid access token.")
-    user = getattr(response, "user", None)
-    if user is None or not getattr(user, "id", None):
-        raise HTTPException(status_code=401, detail="Invalid access token.")
-    return str(user.id)
-
-
 @router.post("/items/delete")
 def delete_wardrobe_items(body: DeleteItemsRequest, authorization: str | None = Header(None)):
     """
@@ -350,12 +127,12 @@ def delete_wardrobe_items(body: DeleteItemsRequest, authorization: str | None = 
     Photos are uploaded with the service key, so the app's own storage
     access cannot remove them. Ids owned by other users are ignored.
     """
-    user_id = _user_id_from_token(authorization)
+    user_id = user_id_from_token(authorization)
     ids = [str(item_id) for item_id in body.ids]
     if not ids:
         return {"deleted": []}
 
-    supabase = get_supabase()
+    supabase = supabase_client.get_supabase()
     rows = (
         supabase.table("wardrobe_items").select("id,image_path,cutout_path")
         .in_("id", ids).eq("user_id", user_id).execute().data
@@ -364,18 +141,13 @@ def delete_wardrobe_items(body: DeleteItemsRequest, authorization: str | None = 
     if not rows:
         return {"deleted": []}
 
-    paths = [
-        p for r in rows
-        for raw in (r.get("image_path"), r.get("cutout_path"))
-        for p in [_storage_path(raw)] if p
-    ]
-    if paths:
-        try:
-            supabase.storage.from_(WARDROBE_BUCKET).remove(paths)
-        except Exception as exc:
-            print(f"[wardrobe] WARNING: could not remove photos {paths}: {exc}")
+    storage.remove_photos([
+        path for row in rows
+        for raw in (row.get("image_path"), row.get("cutout_path"))
+        for path in [storage.storage_path(raw)] if path
+    ])
 
-    owned = [str(r["id"]) for r in rows]
+    owned = [str(row["id"]) for row in rows]
     supabase.table("wardrobe_items").delete().in_("id", owned).eq("user_id", user_id).execute()
     return {"deleted": owned}
 
@@ -387,27 +159,23 @@ def keep_pending_items(job_id: str, body: KeepItemsRequest, request: Request, au
 
     An empty id list skips every pending item of the job.
     """
-    user_id = _user_id_from_token(authorization)
-    with _JOBS_LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Job not found.")
-        if job.get("user_id") != user_id:
-            raise HTTPException(status_code=403, detail="Not your upload.")
-        held = job.get("held") or {}
-        job["held"] = {}
-        job["pending"] = []
+    user_id = user_id_from_token(authorization)
+    try:
+        held = upload_jobs.take_held(job_id, user_id)
+    except upload_jobs.JobNotFound:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    except upload_jobs.NotYourJob:
+        raise HTTPException(status_code=403, detail="Not your upload.")
 
     keep = {str(item_id) for item_id in body.ids}
-    supabase = get_supabase()
+    supabase = supabase_client.get_supabase()
     pipeline = request.app.state.pipeline
     stored = []
     for pending_id, (item, crop) in held.items():
         if pending_id not in keep:
             continue
         try:
-            cutout_img = _make_cutout(crop, pipeline) if crop is not None else None
-            stored.append(_store_item(supabase, item, crop, user_id, cutout_img=cutout_img))
+            stored.append(store_item(supabase, item, crop, user_id, pipeline))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
     return {"items": stored}

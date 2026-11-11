@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from api.main import app
+from api import supabase_client
 from api.routes import wardrobe
+from api.services import upload_jobs, wardrobe_storage
 
 
 class FakeSupabase:
@@ -53,8 +55,8 @@ class FakePipeline:
 @pytest.fixture
 def fake(monkeypatch):
     db = FakeSupabase(tokens={"good-token": "me", "other-token": "someone-else"})
-    monkeypatch.setattr(wardrobe, "get_supabase", lambda: db)
-    monkeypatch.setattr(wardrobe, "_upload_crop", lambda crop, item_id: f"https://img/{item_id}.jpg")
+    monkeypatch.setattr(supabase_client, "get_supabase", lambda: db)
+    monkeypatch.setattr(wardrobe_storage, "upload_crop", lambda crop, item_id: f"https://img/{item_id}.jpg")
     return db
 
 
@@ -73,7 +75,7 @@ def _photo_bytes():
 
 def _run_job(user_id="me"):
     job_id = "job-1"
-    wardrobe._set_job(job_id, status="processing", items=[], pending=[], held={},
+    upload_jobs.set_job(job_id, status="processing", items=[], pending=[], held={},
                       user_id=user_id, error=None)
     wardrobe._process_upload_job(job_id, _photo_bytes(), user_id, FakePipeline())
     return job_id

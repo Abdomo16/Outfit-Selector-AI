@@ -26,6 +26,17 @@ TYPE_ALIASES = {
     "formal_shoes": "oxford_shoes",
     "flip_flop": "flip_flops",
     "puffer_jacket": "heavy_coat",
+    # Labels from older classifiers and rule files, mapped to today's types.
+    "wool_sweater": "sweater",
+    "dress_shirt": "shirt",
+    "suit": "blazer",
+    "tuxedo": "blazer",
+    "tracksuit": "joggers",
+    "jersey": "t_shirt",
+    "outwear": "coat",
+    "outerwear": "coat",
+    "thick_boots": "boots",
+    "shoes": "sneakers",
 }
 
 
@@ -134,6 +145,8 @@ class RuleEngine:
         unknown = False
 
         def allows(rule: list, other: str) -> bool:
+            # "matches_all" is a sentinel in fashion_rules.json meaning
+            # "this color family goes with everything" (e.g. black, white, grey).
             return "matches_all" in rule or other in rule
 
         for i in range(len(items)):

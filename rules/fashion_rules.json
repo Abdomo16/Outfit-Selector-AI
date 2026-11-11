@@ -2,15 +2,14 @@
     "occasion_rules": {
         "gym": {
             "forbidden_types": [
-                "suit",
                 "dress",
                 "oxford_shoes",
                 "blazer",
                 "jeans",
                 "chinos",
                 "trousers",
-                "dress_shirt",
-                "wool_sweater"
+                "shirt",
+                "sweater"
             ],
             "forbidden_styles": [
                 "elegant",
@@ -19,13 +18,9 @@
         },
         "university": {
             "forbidden_types": [
-                "suit",
-                "tuxedo",
                 "oxford_shoes",
                 "tank_top",
-                "shorts",
-                "tracksuit",
-                "jersey"
+                "shorts"
             ],
             "forbidden_styles": [
                 "sport"
@@ -40,9 +35,8 @@
                 "flip_flops",
                 "shorts",
                 "sneakers",
-                "tracksuit",
-                "tank_top",
-                "jersey"
+                "joggers",
+                "tank_top"
             ],
             "forbidden_styles": [
                 "sport",
@@ -54,8 +48,7 @@
         },
         "date_night": {
             "forbidden_types": [
-                "tracksuit",
-                "pyjama",
+                "joggers",
                 "shorts",
                 "flip_flops",
                 "hoodie",
@@ -71,9 +64,8 @@
         },
         "formal": {
             "allowed_types": [
-                "suit",
                 "blazer",
-                "dress_shirt",
+                "shirt",
                 "trousers",
                 "oxford_shoes",
                 "dress"
@@ -98,8 +90,6 @@
             "allowed_types": [
                 "jeans",
                 "t_shirt",
-                "t_shirt",
-                "t_shirt",
                 "hoodie",
                 "sneakers",
                 "chinos",
@@ -107,10 +97,7 @@
                 "blouse",
                 "skirt"
             ],
-            "forbidden_types": [
-                "suit",
-                "tuxedo"
-            ],
+            "forbidden_types": [],
             "forbidden_styles": [
                 "elegant"
             ]
@@ -118,7 +105,7 @@
         "business": {
             "allowed_types": [
                 "blazer",
-                "dress_shirt",
+                "shirt",
                 "chinos",
                 "trousers",
                 "loafers",
@@ -140,15 +127,13 @@
         },
         "sport": {
             "allowed_types": [
-                "tracksuit",
+                "joggers",
                 "shorts",
-                "shoes",
-                "jersey",
+                "sneakers",
                 "leggings",
                 "polo"
             ],
             "forbidden_types": [
-                "suit",
                 "dress",
                 "oxford_shoes",
                 "blazer",
@@ -173,9 +158,8 @@
                 "skirt"
             ],
             "forbidden_types": [
-                "tracksuit",
-                "shoes",
-                "pyjama",
+                "joggers",
+                "sneakers",
                 "t_shirt",
                 "tank_top"
             ],
@@ -188,12 +172,10 @@
         },
         "family": {
             "forbidden_types": [
-                "tracksuit",
-                "pyjama",
+                "joggers",
                 "flip_flops",
                 "tank_top",
-                "shorts",
-                "jersey"
+                "shorts"
             ],
             "forbidden_styles": [
                 "sport"
@@ -204,16 +186,14 @@
         },
         "beach": {
             "forbidden_types": [
-                "suit",
-                "tuxedo",
                 "blazer",
-                "dress_shirt",
                 "oxford_shoes",
                 "loafers",
                 "heels",
                 "boots",
                 "heavy_coat",
-                "wool_sweater"
+                "sweater",
+                "coat"
             ],
             "forbidden_styles": [
                 "elegant"
@@ -221,14 +201,11 @@
         },
         "sightseeing": {
             "forbidden_types": [
-                "suit",
-                "tuxedo",
                 "oxford_shoes",
                 "heels",
                 "flip_flops",
                 "tank_top",
-                "shorts",
-                "pyjama"
+                "shorts"
             ],
             "forbidden_styles": [
                 "elegant"
@@ -237,12 +214,10 @@
         "wedding": {
             "forbidden_types": [
                 "hoodie",
-                "tracksuit",
-                "pyjama",
+                "joggers",
                 "t_shirt",
                 "tank_top",
                 "shorts",
-                "jersey",
                 "flip_flops",
                 "sneakers",
                 "sandals"
@@ -312,15 +287,13 @@
         "summer": {
             "forbidden_types": [
                 "heavy_coat",
-                "wool_sweater",
-                "thick_boots",
-                "outwear"
+                "sweater",
+                "coat"
             ]
         },
         "spring": {
             "forbidden_types": [
-                "heavy_coat",
-                "thick_boots"
+                "heavy_coat"
             ]
         },
         "autumn": {
@@ -348,7 +321,8 @@
         "hot": {
             "forbidden_types": [
                 "heavy_coat",
-                "wool_sweater"
+                "sweater",
+                "coat"
             ]
         }
     }

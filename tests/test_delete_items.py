@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
-from api.routes import wardrobe
+from api import supabase_client
+from api.services import wardrobe_storage
 
 PUBLIC = "https://x.supabase.co/storage/v1/object/public/wardrobe-images"
 
@@ -48,7 +49,7 @@ class FakeSupabase:
 
         class Storage:
             def from_(self, name):
-                assert name == wardrobe.WARDROBE_BUCKET
+                assert name == wardrobe_storage.WARDROBE_BUCKET
                 return Bucket()
 
         self.auth = Auth()
@@ -78,7 +79,7 @@ def fake(monkeypatch):
         ],
         tokens={"good-token": "me"},
     )
-    monkeypatch.setattr(wardrobe, "get_supabase", lambda: db)
+    monkeypatch.setattr(supabase_client, "get_supabase", lambda: db)
     return db
 
 
@@ -120,7 +121,7 @@ def test_empty_selection_deletes_nothing(client, fake):
 
 
 def test_storage_path_parsing():
-    assert wardrobe._storage_path(f"{PUBLIC}/item/photo.jpg?") == "item/photo.jpg"
-    assert wardrobe._storage_path(f"{PUBLIC}/item/photo.jpg?t=1") == "item/photo.jpg"
-    assert wardrobe._storage_path("https://elsewhere.com/x.jpg") is None
-    assert wardrobe._storage_path(None) is None
+    assert wardrobe_storage.storage_path(f"{PUBLIC}/item/photo.jpg?") == "item/photo.jpg"
+    assert wardrobe_storage.storage_path(f"{PUBLIC}/item/photo.jpg?t=1") == "item/photo.jpg"
+    assert wardrobe_storage.storage_path("https://elsewhere.com/x.jpg") is None
+    assert wardrobe_storage.storage_path(None) is None

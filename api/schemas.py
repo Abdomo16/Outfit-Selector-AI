@@ -67,11 +67,16 @@ class RecommendRequest(BaseModel):
     swap_id:   Optional[Union[int, str]] = None
     exclude_ids: Optional[List[Union[int, str]]] = None
     layer:     Optional[bool] = None   # cool night: prefer a look with a jacket
+    temp_high: Optional[float] = None  # the day's high and low, °C
+    temp_low:  Optional[float] = None
+    last_worn: Optional[Dict[str, str]] = None   # item id -> ISO date last worn
+    previous_ids: Optional[List[Union[int, str]]] = None  # the outfit just shown
 
 
 class ReasonCode(BaseModel):
     code: str
     colors: List[str] = []
+    detail: Optional[str] = None        # e.g. a temperature or an item type
 
 
 class OutfitItem(BaseModel):
@@ -93,6 +98,8 @@ class RecommendResponse(BaseModel):
     reasons: List[str] = []
     reason_codes: List[ReasonCode] = []
     occasion: str
+    missing: List[str] = []             # zones with nothing fit for the occasion
+    relaxed: bool = False               # the occasion's rules were set aside
 
 
 #  Chat 
